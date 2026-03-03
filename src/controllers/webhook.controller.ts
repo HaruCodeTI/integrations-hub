@@ -19,7 +19,9 @@ export class WebhookController {
   static async handleMessage(req: Request): Promise<Response> {
     try {
       const rawBody = await req.text();
+      const payload = await req.json();
       const signatureHeader = req.headers.get('x-hub-signature-256');
+      console.log(`[💬 Conteúdo_payload]: ${payload}`);
 
       if (!verifyMetaSignature(rawBody, signatureHeader)) {
         console.warn("[🔴 Alerta de Segurança] Tentativa de injeção no Webhook bloqueada!");
@@ -40,9 +42,9 @@ export class WebhookController {
           console.log(`[✅ Autenticado] Mensagem de ${from} no Bot ID: ${phoneId}`);
           console.log(`[💬 Conteúdo]: ${text}`);
           
-          if (changes?.messages) {
+          if (payload.entry?.[0]?.changes?.[0]?.value?.messages) {
             const message = changes.messages[0];
-            console.log(`[💬 Conteúdo]: ${message.text?.body}`);
+            console.log(`[💬 Conteúdo_teste]: ${message.text?.body}`);
           
             fetch(env.WEBHOOK_URL_N8N, {
               method: 'POST',
