@@ -14,10 +14,10 @@ export function verifyMetaSignature(rawBody: string, signatureHeader: string | n
     .digest('hex');
 
   try {
-    if (signature.length !== expectedSignature.length) return false;
+    if (signature && signature.length !== expectedSignature.length) return false;
     
     return crypto.timingSafeEqual(
-      Buffer.from(signature),
+      Buffer.from(signature ?? ''),
       Buffer.from(expectedSignature)
     );
   } catch (error) {

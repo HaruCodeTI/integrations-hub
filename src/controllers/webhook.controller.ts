@@ -40,7 +40,16 @@ export class WebhookController {
           console.log(`[✅ Autenticado] Mensagem de ${from} no Bot ID: ${phoneId}`);
           console.log(`[💬 Conteúdo]: ${text}`);
           
-          // Roteamento futuro entrará aqui
+          if (changes?.messages) {
+            const message = changes.messages[0];
+            console.log(`[💬 Conteúdo]: ${message.text?.body}`);
+          
+            fetch(env.WEBHOOK_URL_N8N, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(req.body)
+            }).catch(err => console.error("Erro ao repassar para n8n:", err));
+          }
         }
       }
 
