@@ -22,13 +22,19 @@ class GhlOAuthService {
    * O admin da sub-account clica nessa URL → autoriza → GHL redireciona para /ghl/oauth/callback
    */
   getInstallUrl(): string {
-    const params = new URLSearchParams({
+    const params: Record<string, string> = {
       response_type: 'code',
       redirect_uri: `${env.GATEWAY_PUBLIC_URL}/integrations/oauth/callback`,
       client_id: env.GHL_CLIENT_ID,
       scope: env.GHL_SCOPES,
-    });
-    return `${GHL_AUTH_BASE}?${params.toString()}`;
+    };
+
+    // version_id é obrigatório para apps do Marketplace
+    if (env.GHL_APP_VERSION_ID) {
+      params.version_id = env.GHL_APP_VERSION_ID;
+    }
+
+    return `${GHL_AUTH_BASE}?${new URLSearchParams(params).toString()}`;
   }
 
   /**
