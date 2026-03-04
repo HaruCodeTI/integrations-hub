@@ -19,9 +19,11 @@ class GhlOAuthService {
 
   /**
    * Gera a URL de instalação do app GHL.
-   * O admin da sub-account clica nessa URL → autoriza → GHL redireciona para /ghl/oauth/callback
+   * O admin da sub-account clica nessa URL → autoriza → GHL redireciona para /integrations/oauth/callback
+   *
+   * @param clientId — Se fornecido, é passado no `state` para auto-vincular após OAuth
    */
-  getInstallUrl(): string {
+  getInstallUrl(clientId?: string): string {
     const params: Record<string, string> = {
       response_type: 'code',
       redirect_uri: `${env.GATEWAY_PUBLIC_URL}/integrations/oauth/callback`,
@@ -32,6 +34,11 @@ class GhlOAuthService {
     // version_id é obrigatório para apps do Marketplace
     if (env.GHL_APP_VERSION_ID) {
       params.version_id = env.GHL_APP_VERSION_ID;
+    }
+
+    // Passa o client_id do gateway no state para auto-vincular após OAuth
+    if (clientId) {
+      params.state = clientId;
     }
 
     return `${GHL_AUTH_BASE}?${new URLSearchParams(params).toString()}`;

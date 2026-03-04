@@ -68,9 +68,9 @@ export const appRouter = async (req: Request): Promise<Response> => {
 
   // ─── Integrations (LeadConnector/GHL) ────────────────────
 
-  // GET /integrations/install — Redireciona para autorização no Marketplace
+  // GET /integrations/install?client_id=xxx — Redireciona para autorização no Marketplace
   if (method === "GET" && pathname === "/integrations/install") {
-    return GhlController.install();
+    return GhlController.install(url);
   }
 
   // GET /integrations/oauth/callback — Callback do OAuth

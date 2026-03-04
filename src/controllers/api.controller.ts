@@ -1,6 +1,7 @@
 import { db, type CreateClientInput, type UpdateClientInput } from '../services/db.service';
 import { router } from '../services/router.service';
 import { sender, type SendMessageInput } from '../services/sender.service';
+import { env } from '../config/env';
 
 function jsonResponse(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -24,14 +25,26 @@ export class ApiController {
     try {
       const body = await req.json() as CreateClientInput;
 
-      // Validações
-      if (!body.name || !body.phone_number_id || !body.webhook_url || !body.meta_token) {
+      // Validações básicas
+      if (!body.name || !body.phone_number_id || !body.meta_token) {
         return jsonResponse({
-          error: 'Campos obrigatórios: name, phone_number_id, webhook_url, meta_token',
+          error: 'Campos obrigatórios: name, phone_number_id, meta_token',
         }, 400);
       }
 
-      // Verifica duplicidade
+      // Para clientes webhook, webhook_url é obrigatório
+      if (body.client_type !== 'ghl' && !body.webhook_url) {
+        return jsonResponse({
+          error: 'Campo webhook_url é obrigatório para clientes do tipo webhook',
+        }, 400);
+      }
+
+      // Para clientes GHL, define webhook_url vazio se não fornecido
+      if (body.client_type === 'ghl' && !body.webhook_url) {
+        body.webhook_url = '';
+      }
+
+      // Verifica duplicidade de phone_number_id
       const existing = db.getClientByPhoneId(body.phone_number_id);
       if (existing) {
         return jsonResponse({
@@ -39,11 +52,28 @@ export class ApiController {
         }, 409);
       }
 
+      // Verifica duplicidade de ghl_location_id
+      if (body.ghl_location_id) {
+        const existingGhl = db.getClientByGhlLocationId(body.ghl_location_id);
+        if (existingGhl) {
+          return jsonResponse({
+            error: `Location ${body.ghl_location_id} já está vinculada ao cliente "${existingGhl.name}"`,
+          }, 409);
+        }
+      }
+
       const client = db.createClient(body);
       router.reload(); // Atualiza o cache
 
-      console.log(`[➕ API] Cliente criado: "${client.name}" (${client.phone_number_id})`);
-      return jsonResponse({ message: 'Cliente criado com sucesso', client }, 201);
+      console.log(`[➕ API] Cliente criado: "${client.name}" (${client.phone_number_id}) tipo: ${client.client_type}`);
+
+      // Se for GHL, sugere o link de instalação
+      const response: any = { message: 'Cliente criado com sucesso', client };
+      if (client.client_type === 'ghl' && !client.ghl_location_id) {
+        response.next_step = `Acesse ${env.GATEWAY_PUBLIC_URL}/integrations/install?client_id=${client.id} para conectar ao GHL`;
+      }
+
+      return jsonResponse(response, 201);
 
     } catch (error: any) {
       return jsonResponse({ error: 'Body inválido', details: error.message }, 400);
@@ -55,14 +85,25 @@ export class ApiController {
     try {
       const body = await req.json() as UpdateClientInput;
 
-      const updated = db.updateClient(id, body);
-      if (!updated) {
+      const existing = db.getClientById(id);
+      if (!existing) {
         return jsonResponse({ error: 'Cliente não encontrado' }, 404);
       }
 
+      // Verifica duplicidade de ghl_location_id
+      if (body.ghl_location_id && body.ghl_location_id !== existing.ghl_location_id) {
+        const existingGhl = db.getClientByGhlLocationId(body.ghl_location_id);
+        if (existingGhl && existingGhl.id !== id) {
+          return jsonResponse({
+            error: `Location ${body.ghl_location_id} já está vinculada ao cliente "${existingGhl.name}"`,
+          }, 409);
+        }
+      }
+
+      const updated = db.updateClient(id, body);
       router.reload(); // Atualiza o cache
 
-      console.log(`[✏️  API] Cliente atualizado: "${updated.name}" (${updated.phone_number_id})`);
+      console.log(`[✏️  API] Cliente atualizado: "${updated!.name}" (${updated!.phone_number_id})`);
       return jsonResponse({ message: 'Cliente atualizado', client: updated });
 
     } catch (error: any) {

@@ -3,6 +3,7 @@ import { ghlOAuth } from '../services/ghl-oauth.service';
 import { ghlApi } from '../services/ghl-api.service';
 import { sender } from '../services/sender.service';
 import { db } from '../services/db.service';
+import { router } from '../services/router.service';
 
 function jsonResponse(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -23,15 +24,35 @@ function jsonResponse(data: any, status = 200): Response {
 export class GhlController {
 
   /**
-   * GET /integrations/install
+   * GET /integrations/install?client_id=xxx
    * Redireciona o admin da sub-account para o fluxo de autorização no GHL Marketplace.
+   * Se client_id for fornecido, auto-vincula a location ao client após o OAuth.
    */
-  static install(): Response {
+  static install(url: URL): Response {
     if (!env.GHL_CLIENT_ID) {
       return jsonResponse({ error: 'GHL_CLIENT_ID não configurado no .env' }, 500);
     }
 
-    const installUrl = ghlOAuth.getInstallUrl();
+    const clientId = url.searchParams.get('client_id') || undefined;
+
+    // Valida o client_id se fornecido
+    if (clientId) {
+      const client = db.getClientById(clientId);
+      if (!client) {
+        return jsonResponse({ error: `Cliente não encontrado: ${clientId}` }, 404);
+      }
+      if (client.client_type !== 'ghl') {
+        return jsonResponse({ error: `Cliente "${client.name}" não é do tipo GHL. Atualize o client_type para "ghl" primeiro.` }, 400);
+      }
+      if (client.ghl_location_id) {
+        return jsonResponse({
+          error: `Cliente "${client.name}" já está vinculado à location ${client.ghl_location_id}. Use PUT /api/clients/${clientId} para desvincular primeiro.`,
+        }, 409);
+      }
+      console.log(`[🔗 GHL] Install com auto-vinculação para client "${client.name}" (${clientId})`);
+    }
+
+    const installUrl = ghlOAuth.getInstallUrl(clientId);
     console.log(`[🔗 GHL] Redirecionando para install: ${installUrl}`);
 
     return new Response(null, {
@@ -41,11 +62,13 @@ export class GhlController {
   }
 
   /**
-   * GET /ghl/oauth/callback?code=...
+   * GET /integrations/oauth/callback?code=...&state=client_id
    * GHL redireciona aqui após o admin autorizar. Troca o code por tokens.
+   * Se state contiver um client_id, auto-vincula a location ao client.
    */
   static async oauthCallback(url: URL): Promise<Response> {
     const code = url.searchParams.get('code');
+    const clientId = url.searchParams.get('state') || null; // client_id passado via state
 
     if (!code) {
       return new Response(GhlController.callbackErrorHTML('Código de autorização ausente'), {
@@ -62,7 +85,25 @@ export class GhlController {
       const locationId = tokens.locationId || 'desconhecido';
       const companyId = tokens.companyId || 'n/a';
 
-      return new Response(GhlController.callbackSuccessHTML(locationId, companyId), {
+      // Auto-vinculação: se veio client_id no state, vincula a location ao client
+      let linkedClientName: string | null = null;
+      if (clientId && locationId !== 'desconhecido') {
+        const client = db.getClientById(clientId);
+        if (client && client.client_type === 'ghl' && !client.ghl_location_id) {
+          // Verifica se essa location já não está vinculada a outro client
+          const existingLink = db.getClientByGhlLocationId(locationId);
+          if (existingLink) {
+            console.warn(`[⚠️ GHL OAuth] Location ${locationId} já vinculada ao client "${existingLink.name}". Não vinculando novamente.`);
+          } else {
+            db.updateClient(clientId, { ghl_location_id: locationId });
+            router.reload();
+            linkedClientName = client.name;
+            console.log(`[🔗 GHL OAuth] Location ${locationId} auto-vinculada ao client "${client.name}" (${clientId})`);
+          }
+        }
+      }
+
+      return new Response(GhlController.callbackSuccessHTML(locationId, companyId, linkedClientName), {
         status: 200,
         headers: { 'Content-Type': 'text/html; charset=utf-8' },
       });
@@ -193,7 +234,12 @@ export class GhlController {
 
   // ─── HTML pages ────────────────────────────────────────────
 
-  private static callbackSuccessHTML(locationId: string, companyId: string): string {
+  private static callbackSuccessHTML(locationId: string, companyId: string, linkedClientName?: string | null): string {
+    const linkedSection = linkedClientName
+      ? `<div class="linked"><span>Cliente vinculado:</span> ${linkedClientName}</div>
+         <p style="margin-top: 1.5rem; font-size: 0.85rem; color: #22c55e;">Tudo pronto! O fluxo WhatsApp ↔ GHL está ativo.</p>`
+      : `<p style="margin-top: 1.5rem; font-size: 0.85rem;">Vincule essa location a um cliente via <code>PUT /api/clients/:id</code> com <code>ghl_location_id</code>, ou use <code>/integrations/install?client_id=xxx</code> para vincular automaticamente.</p>`;
+
     return `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -209,6 +255,8 @@ export class GhlController {
     p { color: #94a3b8; margin: 0.5rem 0; font-size: 0.95rem; }
     .detail { background: #0f172a; border-radius: 8px; padding: 1rem; margin-top: 1rem; font-family: monospace; font-size: 0.85rem; text-align: left; }
     .detail span { color: #64748b; }
+    .linked { background: #064e3b; border-radius: 8px; padding: 1rem; margin-top: 0.5rem; font-family: monospace; font-size: 0.85rem; text-align: left; color: #6ee7b7; }
+    .linked span { color: #34d399; }
   </style>
 </head>
 <body>
@@ -220,7 +268,7 @@ export class GhlController {
       <span>Location ID:</span> ${locationId}<br/>
       <span>Company ID:</span> ${companyId}
     </div>
-    <p style="margin-top: 1.5rem; font-size: 0.85rem;">Agora cadastre um cliente no gateway vinculando essa location.</p>
+    ${linkedSection}
   </div>
 </body>
 </html>`;
