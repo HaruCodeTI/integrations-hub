@@ -3,6 +3,8 @@ import { ApiController } from '../controllers/api.controller';
 import { validateApiKey, unauthorizedResponse } from '../middlewares/apiAuth';
 import { privacyPolicyHTML } from '../pages/privacy';
 import { termsOfUseHTML } from '../pages/terms';
+import { getScalarHTML } from '../docs/scalar';
+import { openApiSpec } from '../docs/openapi';
 
 const htmlResponse = (html: string) =>
   new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" }, status: 200 });
@@ -37,6 +39,19 @@ export const appRouter = async (req: Request): Promise<Response> => {
 
   if (method === "GET" && pathname === "/terms") {
     return htmlResponse(termsOfUseHTML);
+  }
+
+  // ─── Documentação API (Scalar) ────────────────────────────
+
+  if (method === "GET" && pathname === "/docs") {
+    return htmlResponse(getScalarHTML());
+  }
+
+  if (method === "GET" && pathname === "/openapi.json") {
+    return new Response(JSON.stringify(openApiSpec), {
+      headers: { "Content-Type": "application/json" },
+      status: 200,
+    });
   }
 
   // ─── Webhook Meta (público, protegido por HMAC) ─────────
