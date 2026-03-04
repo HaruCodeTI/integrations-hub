@@ -36,7 +36,6 @@ class GhlApiService {
       conversationProviderId: env.GHL_CONVERSATION_PROVIDER_ID,
       message: params.message,
       phone: params.phoneFrom,
-      attachments: [],
     };
 
     // altId permite rastrear a mensagem original do WhatsApp
