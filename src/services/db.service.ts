@@ -227,7 +227,7 @@ class DatabaseService {
       INSERT INTO ghl_contacts (location_id, contact_id, phone_number)
       VALUES (?, ?, ?)
       ON CONFLICT(location_id, phone_number) DO UPDATE SET contact_id = ?
-    `).run(locationId, contactId, phoneNumber);
+    `).run(locationId, contactId, phoneNumber, contactId);
   }
 }
 
