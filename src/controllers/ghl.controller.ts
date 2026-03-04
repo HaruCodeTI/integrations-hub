@@ -96,19 +96,24 @@ export class GhlController {
     try {
       const body = await req.json() as any;
 
-      console.log(`[📩 GHL Outbound] Recebido:`, JSON.stringify(body).substring(0, 300));
+      console.log(`[📩 GHL Outbound] Recebido:`, JSON.stringify(body).substring(0, 500));
 
-      // Valida o tipo de evento
-      if (body.type !== 'ProviderOutboundMessage') {
+      // GHL Custom Provider envia type "SMS" ou "Email" (não "ProviderOutboundMessage")
+      const validTypes = ['SMS', 'Email', 'ProviderOutboundMessage'];
+      if (!validTypes.includes(body.type)) {
         console.log(`[ℹ️ GHL Outbound] Evento ignorado: ${body.type}`);
         return jsonResponse({ status: 'ignored', type: body.type });
       }
 
-      const { locationId, contactId, messageId, content, endpoint } = body;
+      const { locationId, contactId, messageId } = body;
 
-      if (!locationId || !content?.text || !endpoint?.phone) {
+      // GHL envia campos no top-level: "message" e "phone" (não content.text / endpoint.phone)
+      const messageText = body.message || body.content?.text || '';
+      const phoneNumber = body.phone || body.endpoint?.phone || '';
+
+      if (!locationId || !messageText || !phoneNumber) {
         console.warn(`[⚠️ GHL Outbound] Payload incompleto:`, body);
-        return jsonResponse({ error: 'Payload incompleto — locationId, content.text e endpoint.phone são obrigatórios' }, 400);
+        return jsonResponse({ error: 'Payload incompleto — locationId, message e phone são obrigatórios' }, 400);
       }
 
       // Busca o cliente vinculado a essa location
@@ -119,16 +124,16 @@ export class GhlController {
       }
 
       // Normaliza o telefone (remove + e espaços)
-      const to = endpoint.phone.replace(/[^0-9]/g, '');
+      const to = phoneNumber.replace(/[^0-9]/g, '');
 
-      console.log(`[📤 GHL → WhatsApp] Enviando de "${client.name}" (${client.phone_number_id}) para ${to}: "${content.text.substring(0, 50)}..."`);
+      console.log(`[📤 GHL → WhatsApp] Enviando de "${client.name}" (${client.phone_number_id}) para ${to}: "${messageText.substring(0, 50)}..."`);
 
       // Envia via Meta API usando o sender centralizado
       const result = await sender.send({
         phone_number_id: client.phone_number_id,
         to,
         type: 'text',
-        text: { body: content.text },
+        text: { body: messageText },
       });
 
       if (result.success) {

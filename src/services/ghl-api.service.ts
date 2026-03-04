@@ -28,21 +28,23 @@ class GhlApiService {
   }): Promise<any> {
     const token = await ghlOAuth.getValidToken(params.locationId);
 
-    const body = {
+    // Formato da API v2 do GHL para Custom Conversation Provider
+    // Campos top-level: type, contactId, conversationProviderId, message, phone, attachments
+    const body: Record<string, any> = {
       type: 'Custom',
       contactId: params.contactId,
       conversationProviderId: env.GHL_CONVERSATION_PROVIDER_ID,
-      endpoint: {
-        phone: params.phoneFrom,
-      },
-      content: {
-        text: params.message,
-        attachments: [],
-      },
-      metadata: {
-        providerMessageId: params.messageId || `wa_${Date.now()}`,
-      },
+      message: params.message,
+      phone: params.phoneFrom,
+      attachments: [],
     };
+
+    // altId permite rastrear a mensagem original do WhatsApp
+    if (params.messageId) {
+      body.altId = params.messageId;
+    }
+
+    console.log(`[📥 GHL API] Enviando inbound body:`, JSON.stringify(body).substring(0, 400));
 
     const response = await fetch(`${GHL_API_BASE}/conversations/messages/inbound`, {
       method: 'POST',
@@ -61,7 +63,7 @@ class GhlApiService {
       throw new Error(`GHL inbound message failed: ${response.status} — ${JSON.stringify(data)}`);
     }
 
-    console.log(`[📥 GHL] Mensagem inbound enviada para contact ${params.contactId} na location ${params.locationId}`);
+    console.log(`[📥 GHL] Mensagem inbound enviada para contact ${params.contactId} na location ${params.locationId}`, JSON.stringify(data).substring(0, 200));
     return data;
   }
 
