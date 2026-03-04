@@ -90,25 +90,14 @@ export class WebhookController {
           const status = changes.statuses[0];
           console.log(`[📊 Status] ${status.status} — msg ${status.id} para ${status.recipient_id}`);
 
-          // Se for um cliente GHL, atualiza o status no GHL também
+          // Para clientes GHL, o status update já é feito no outbound handler (ghl.controller.ts)
+          // usando o messageId correto do GHL. O webhook da Meta envia wamid (WhatsApp ID),
+          // que não é reconhecido pelo GHL, então ignoramos aqui para evitar erros 401.
           const phoneId = changes.metadata?.phone_number_id;
           if (phoneId) {
             const destination = router.getDestination(phoneId);
             if (destination.clientType === 'ghl' && destination.ghlLocationId) {
-              const ghlStatus = status.status === 'delivered' ? 'delivered'
-                : status.status === 'read' ? 'read'
-                : status.status === 'sent' ? 'sent'
-                : status.status === 'failed' ? 'failed'
-                : null;
-
-              if (ghlStatus) {
-                ghlApi.updateMessageStatus({
-                  locationId: destination.ghlLocationId,
-                  messageId: status.id,
-                  status: ghlStatus as any,
-                  error: status.errors?.[0]?.message,
-                }).catch(err => console.warn(`[⚠️ GHL Status] Erro ao atualizar:`, err));
-              }
+              console.log(`[📊 GHL Status] Ignorando status "${status.status}" via Meta webhook (wamid não mapeado para GHL messageId)`);
             }
           }
         }
