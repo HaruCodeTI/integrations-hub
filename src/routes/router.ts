@@ -1,4 +1,9 @@
 import { WebhookController } from '../controllers/webhook.controller';
+import { privacyPolicyHTML } from '../pages/privacy';
+import { termsOfUseHTML } from '../pages/terms';
+
+const htmlResponse = (html: string) =>
+  new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" }, status: 200 });
 
 export const appRouter = async (req: Request): Promise<Response> => {
   const url = new URL(req.url);
@@ -8,6 +13,14 @@ export const appRouter = async (req: Request): Promise<Response> => {
       headers: { "Content-Type": "application/json" },
       status: 200,
     });
+  }
+
+  if (req.method === "GET" && url.pathname === "/privacy") {
+    return htmlResponse(privacyPolicyHTML);
+  }
+
+  if (req.method === "GET" && url.pathname === "/terms") {
+    return htmlResponse(termsOfUseHTML);
   }
 
   if (url.pathname === "/webhook") {
