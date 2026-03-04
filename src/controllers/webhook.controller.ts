@@ -1,8 +1,9 @@
 import { env } from '../config/env';
 import { verifyMetaSignature } from '../middlewares/metaSecurity';
+import { router } from '../services/router.service';
 
 export class WebhookController {
-  
+
   static verify(req: Request, url: URL): Response {
     const mode = url.searchParams.get("hub.mode");
     const token = url.searchParams.get("hub.verify_token");
@@ -37,17 +38,41 @@ export class WebhookController {
           const from = changes.messages[0].from;
           const text = changes.messages[0].text?.body || "Mídia/Interação recebida";
 
+          // Resolve o destino via roteamento multi-tenant
+          const destination = router.getDestination(phoneId);
+
           console.log(`[✅ Autenticado] Mensagem de ${from} no Bot ID: ${phoneId}`);
           console.log(`[💬 Conteúdo]: ${text}`);
+          console.log(`[🔀 Roteamento]: Encaminhando para "${destination.clientName}" → ${destination.webhookUrl}`);
 
-          fetch(env.WEBHOOK_URL_N8N, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body) 
-          }).catch(err => console.error("Erro ao repassar para n8n:", err));
+          if (destination.webhookUrl) {
+            const headers: Record<string, string> = {
+              'Content-Type': 'application/json',
+            };
+
+            // Se o destino tem auth_token, envia como Bearer
+            if (destination.authToken) {
+              headers['Authorization'] = `Bearer ${destination.authToken}`;
+            }
+
+            fetch(destination.webhookUrl, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify(body),
+            }).catch(err => console.error(`[❌ Roteamento] Erro ao repassar para "${destination.clientName}":`, err));
+          } else {
+            console.warn(`[⚠️ Roteamento] Nenhum destino configurado para phone_number_id: ${phoneId}`);
+          }
+        }
+
+        // Captura status updates (delivered, read, sent)
+        if (changes?.statuses) {
+          const status = changes.statuses[0];
+          console.log(`[📊 Status] ${status.status} — msg ${status.id} para ${status.recipient_id}`);
         }
       }
 
+      // Sempre retorna 200 imediatamente para não bloquear o webhook da Meta
       return new Response("EVENT_RECEIVED", { status: 200 });
 
     } catch (error) {
