@@ -2,10 +2,15 @@ export const openApiSpec = {
   openapi: '3.1.0',
   info: {
     title: 'wa-omni-gateway API',
-    version: '2.0.0',
-    description: `Gateway multi-tenant para WhatsApp Business API.
+    version: '3.0.0',
+    description: `Gateway multi-tenant para WhatsApp Business API com integração GoHighLevel.
 
 Recebe webhooks da Meta, roteia para o bot/worker correto baseado no \`phone_number_id\`, e centraliza o envio de mensagens via \`/api/send\`.
+
+## Tipos de Cliente
+
+- **webhook** — Encaminha o payload da Meta para uma URL (n8n, bot custom, etc.)
+- **ghl** — Envia mensagens inbound para o GoHighLevel via Conversations API (Conversation Provider)
 
 ## Autenticação
 
@@ -14,9 +19,17 @@ Todas as rotas \`/api/*\` exigem o header:
 Authorization: Bearer <GATEWAY_API_KEY>
 \`\`\`
 
-## Fluxo
+## Fluxos
+
+**Webhook (n8n/bot):**
 \`\`\`
 Celular → Meta → Gateway (roteia) → Bot/n8n → Gateway (/api/send) → Meta → Celular
+\`\`\`
+
+**GHL (Conversation Provider):**
+\`\`\`
+Celular → Meta → Gateway → GHL API (inbound) → GHL Conversations UI
+GHL Conversations UI → Gateway (/integrations/webhook/outbound) → Meta → Celular
 \`\`\``,
     contact: {
       name: 'HaruCode',
@@ -37,6 +50,7 @@ Celular → Meta → Gateway (roteia) → Bot/n8n → Gateway (/api/send) → Me
   tags: [
     { name: 'Clients', description: 'Gerenciamento de clientes (multi-tenant)' },
     { name: 'Messaging', description: 'Envio de mensagens via Meta API' },
+    { name: 'GHL', description: 'Integração GoHighLevel Marketplace (Conversation Provider)' },
     { name: 'Webhook', description: 'Recepção de webhooks da Meta' },
     { name: 'System', description: 'Rotas de sistema e monitoramento' },
   ],
@@ -72,9 +86,11 @@ Celular → Meta → Gateway (roteia) → Bot/n8n → Gateway (/api/send) → Me
       post: {
         tags: ['Clients'],
         summary: 'Cadastrar novo cliente',
-        description: `Cadastra um novo cliente no gateway. Cada cliente representa um número do WhatsApp Business com seu próprio destino (webhook) e token Meta.
+        description: `Cadastra um novo cliente no gateway. Cada cliente representa um número do WhatsApp Business.
 
-Após o cadastro, o gateway roteia automaticamente as mensagens recebidas nesse \`phone_number_id\` para o \`webhook_url\` configurado.`,
+**Tipos de cliente:**
+- \`webhook\` (padrão) — Encaminha o payload Meta para \`webhook_url\`
+- \`ghl\` — Envia inbound para o GoHighLevel. Requer \`ghl_location_id\` (obtido após OAuth em \`/integrations/install\`)`,
         operationId: 'createClient',
         security: [{ bearerAuth: [] }],
         requestBody: {
@@ -84,7 +100,7 @@ Após o cadastro, o gateway roteia automaticamente as mensagens recebidas nesse 
               schema: { $ref: '#/components/schemas/CreateClient' },
               examples: {
                 'bot-n8n': {
-                  summary: 'Bot com n8n',
+                  summary: 'Bot com n8n (webhook)',
                   value: {
                     name: 'HaruCode Bot',
                     phone_number_id: '968853216316915',
@@ -93,13 +109,14 @@ Após o cadastro, o gateway roteia automaticamente as mensagens recebidas nesse 
                   },
                 },
                 'ghl-client': {
-                  summary: 'Cliente GHL/LeadConnector',
+                  summary: 'Cliente GHL (Conversation Provider)',
                   value: {
                     name: 'Cliente X - GHL',
                     phone_number_id: '123456789012345',
-                    webhook_url: 'https://services.leadconnectorhq.com/webhooks/inbound/...',
-                    auth_token: 'token-do-ghl',
+                    webhook_url: 'n/a',
                     meta_token: 'EAABbb...',
+                    client_type: 'ghl',
+                    ghl_location_id: 'abc123LocationId',
                   },
                 },
               },
@@ -166,9 +183,9 @@ Após o cadastro, o gateway roteia automaticamente as mensagens recebidas nesse 
                   summary: 'Trocar URL do webhook',
                   value: { webhook_url: 'https://n8n.harucode.com.br/webhook/novo-id' },
                 },
-                'trocar-token': {
-                  summary: 'Renovar token Meta',
-                  value: { meta_token: 'EAANovo...' },
+                'converter-para-ghl': {
+                  summary: 'Converter para cliente GHL',
+                  value: { client_type: 'ghl', ghl_location_id: 'abc123LocationId' },
                 },
                 'desativar': {
                   summary: 'Desativar cliente',
@@ -275,18 +292,6 @@ Este endpoint é chamado pelo bot/n8n para responder ao cliente final.`,
                     },
                   },
                 },
-                'imagem': {
-                  summary: 'Imagem com legenda',
-                  value: {
-                    phone_number_id: '968853216316915',
-                    to: '556799587200',
-                    type: 'image',
-                    image: {
-                      link: 'https://example.com/foto.jpg',
-                      caption: 'Confira nossa promoção!',
-                    },
-                  },
-                },
               },
             },
           },
@@ -300,31 +305,7 @@ Este endpoint é chamado pelo bot/n8n para responder ao cliente final.`,
                   type: 'object',
                   properties: {
                     message: { type: 'string', example: 'Mensagem enviada com sucesso' },
-                    data: {
-                      type: 'object',
-                      properties: {
-                        messaging_product: { type: 'string', example: 'whatsapp' },
-                        contacts: {
-                          type: 'array',
-                          items: {
-                            type: 'object',
-                            properties: {
-                              input: { type: 'string', example: '556799587200' },
-                              wa_id: { type: 'string', example: '556799587200' },
-                            },
-                          },
-                        },
-                        messages: {
-                          type: 'array',
-                          items: {
-                            type: 'object',
-                            properties: {
-                              id: { type: 'string', example: 'wamid.HBgMNTU2Nzk5NTg3MjAw...' },
-                            },
-                          },
-                        },
-                      },
-                    },
+                    data: { type: 'object' },
                   },
                 },
               },
@@ -349,11 +330,115 @@ Este endpoint é chamado pelo bot/n8n para responder ao cliente final.`,
         },
       },
     },
+    '/api/ghl/locations': {
+      get: {
+        tags: ['GHL'],
+        summary: 'Listar locations GHL conectadas',
+        description: 'Retorna todas as sub-accounts do GHL que completaram o fluxo OAuth e estão conectadas ao gateway.',
+        operationId: 'listGhlLocations',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': {
+            description: 'Lista de locations conectadas',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    count: { type: 'integer', example: 1 },
+                    locations: {
+                      type: 'array',
+                      items: { $ref: '#/components/schemas/GhlLocation' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { $ref: '#/components/responses/Unauthorized' },
+        },
+      },
+    },
+    '/integrations/install': {
+      get: {
+        tags: ['GHL'],
+        summary: 'Iniciar instalação do app GHL',
+        description: `Redireciona o admin da sub-account do GHL para o fluxo de autorização OAuth no Marketplace.
+
+Após autorizar, o GHL redireciona para \`/ghl/oauth/callback\` com o authorization code.
+
+**Acesse diretamente no navegador** — não é uma API REST.`,
+        operationId: 'ghlInstall',
+        responses: {
+          '302': { description: 'Redirecionamento para o GHL Marketplace' },
+          '500': { description: 'GHL_CLIENT_ID não configurado' },
+        },
+      },
+    },
+    '/integrations/oauth/callback': {
+      get: {
+        tags: ['GHL'],
+        summary: 'Callback OAuth do GHL',
+        description: 'Recebe o authorization code do GHL após o admin autorizar. Troca por tokens e salva no banco. **Não chame diretamente.**',
+        operationId: 'ghlOAuthCallback',
+        parameters: [
+          { name: 'code', in: 'query', required: true, schema: { type: 'string' }, description: 'Authorization code do GHL' },
+        ],
+        responses: {
+          '200': { description: 'HTML — Conexão realizada com sucesso' },
+          '400': { description: 'Código de autorização ausente' },
+          '500': { description: 'Erro na troca de tokens' },
+        },
+      },
+    },
+    '/integrations/webhook/outbound': {
+      post: {
+        tags: ['GHL'],
+        summary: 'Webhook outbound do GHL',
+        description: `Recebe mensagens enviadas pelo agente no GHL Conversations UI (ProviderOutboundMessage).
+
+O gateway envia a mensagem via WhatsApp usando o \`phone_number_id\` do cliente vinculado à \`locationId\`.
+
+**Configurar no GHL Marketplace → App Settings → Webhook URL:**
+\`\`\`
+https://gateway.harucode.com.br/integrations/webhook/outbound
+\`\`\``,
+        operationId: 'ghlWebhookOutbound',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/GhlOutboundMessage' },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Mensagem enviada via WhatsApp',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', example: 'sent' },
+                    messageId: { type: 'string' },
+                    waMessageId: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          '400': { description: 'Payload incompleto' },
+          '404': { description: 'Nenhum cliente vinculado à location' },
+          '422': { description: 'Erro ao enviar via Meta API' },
+        },
+      },
+    },
     '/webhook': {
       get: {
         tags: ['Webhook'],
         summary: 'Verificação do webhook (Meta challenge)',
-        description: 'Endpoint de verificação chamado pela Meta ao configurar o webhook. Valida o `hub.verify_token` e retorna o `hub.challenge`.',
+        description: 'Endpoint de verificação chamado pela Meta ao configurar o webhook.',
         operationId: 'verifyWebhook',
         parameters: [
           { name: 'hub.mode', in: 'query', required: true, schema: { type: 'string', enum: ['subscribe'] } },
@@ -361,16 +446,18 @@ Este endpoint é chamado pelo bot/n8n para responder ao cliente final.`,
           { name: 'hub.challenge', in: 'query', required: true, schema: { type: 'string' } },
         ],
         responses: {
-          '200': { description: 'Challenge aceito — retorna o valor do hub.challenge' },
+          '200': { description: 'Challenge aceito' },
           '403': { description: 'Token de verificação inválido' },
         },
       },
       post: {
         tags: ['Webhook'],
         summary: 'Recepção de eventos (Meta webhook)',
-        description: `Recebe eventos do WhatsApp Cloud API. Valida a assinatura HMAC SHA-256 (\`x-hub-signature-256\`) e roteia a mensagem para o cliente correto baseado no \`phone_number_id\`.
+        description: `Recebe eventos do WhatsApp Cloud API. Valida a assinatura HMAC SHA-256 e roteia:
+- **webhook** clients → encaminha payload para \`webhook_url\`
+- **ghl** clients → envia inbound via GHL Conversations API
 
-**Não chame este endpoint diretamente** — ele é chamado pela Meta automaticamente.`,
+**Não chame diretamente** — chamado pela Meta automaticamente.`,
         operationId: 'handleWebhook',
         requestBody: {
           required: true,
@@ -396,7 +483,6 @@ Este endpoint é chamado pelo bot/n8n para responder ao cliente final.`,
       get: {
         tags: ['System'],
         summary: 'Health check',
-        description: 'Verifica se o gateway está rodando.',
         operationId: 'healthCheck',
         responses: {
           '200': {
@@ -420,22 +506,16 @@ Este endpoint é chamado pelo bot/n8n para responder ao cliente final.`,
       get: {
         tags: ['System'],
         summary: 'Política de Privacidade',
-        description: 'Página HTML com a Política de Privacidade (LGPD).',
         operationId: 'privacyPolicy',
-        responses: {
-          '200': { description: 'HTML da Política de Privacidade' },
-        },
+        responses: { '200': { description: 'HTML da Política de Privacidade' } },
       },
     },
     '/terms': {
       get: {
         tags: ['System'],
         summary: 'Termos de Uso',
-        description: 'Página HTML com os Termos de Uso.',
         operationId: 'termsOfUse',
-        responses: {
-          '200': { description: 'HTML dos Termos de Uso' },
-        },
+        responses: { '200': { description: 'HTML dos Termos de Uso' } },
       },
     },
   },
@@ -457,6 +537,8 @@ Este endpoint é chamado pelo bot/n8n para responder ao cliente final.`,
           webhook_url: { type: 'string', format: 'uri', example: 'https://n8n.harucode.com.br/webhook/cc05260a' },
           auth_token: { type: 'string', nullable: true, example: null },
           meta_token: { type: 'string', example: 'EAAMngw...' },
+          client_type: { type: 'string', enum: ['webhook', 'ghl'], default: 'webhook', example: 'webhook', description: 'Tipo de roteamento: webhook (n8n/bot) ou ghl (GoHighLevel)' },
+          ghl_location_id: { type: 'string', nullable: true, example: null, description: 'ID da location GHL (obrigatório se client_type=ghl)' },
           active: { type: 'integer', enum: [0, 1], example: 1 },
           created_at: { type: 'string', format: 'date-time', example: '2026-03-04 20:30:39' },
           updated_at: { type: 'string', format: 'date-time', example: '2026-03-04 20:30:39' },
@@ -468,9 +550,11 @@ Este endpoint é chamado pelo bot/n8n para responder ao cliente final.`,
         properties: {
           name: { type: 'string', description: 'Nome do cliente', example: 'HaruCode Bot' },
           phone_number_id: { type: 'string', description: 'ID do número no Meta', example: '968853216316915' },
-          webhook_url: { type: 'string', format: 'uri', description: 'URL destino para encaminhar mensagens', example: 'https://n8n.harucode.com.br/webhook/cc05260a' },
+          webhook_url: { type: 'string', format: 'uri', description: 'URL destino para webhook (use "n/a" para clientes GHL)', example: 'https://n8n.harucode.com.br/webhook/cc05260a' },
           auth_token: { type: 'string', description: 'Token de autenticação para o destino (opcional)', example: 'token-secreto' },
           meta_token: { type: 'string', description: 'Token da Meta para envio de mensagens', example: 'EAAMngw...' },
+          client_type: { type: 'string', enum: ['webhook', 'ghl'], default: 'webhook', description: 'Tipo de roteamento' },
+          ghl_location_id: { type: 'string', description: 'Location ID do GHL (obrigatório se client_type=ghl)', example: 'abc123LocationId' },
         },
       },
       UpdateClient: {
@@ -481,6 +565,8 @@ Este endpoint é chamado pelo bot/n8n para responder ao cliente final.`,
           webhook_url: { type: 'string', format: 'uri' },
           auth_token: { type: 'string' },
           meta_token: { type: 'string' },
+          client_type: { type: 'string', enum: ['webhook', 'ghl'] },
+          ghl_location_id: { type: 'string' },
           active: { type: 'integer', enum: [0, 1] },
         },
       },
@@ -488,58 +574,48 @@ Este endpoint é chamado pelo bot/n8n para responder ao cliente final.`,
         type: 'object',
         required: ['phone_number_id', 'to'],
         properties: {
-          phone_number_id: { type: 'string', description: 'ID do número remetente (deve estar cadastrado)', example: '968853216316915' },
-          to: { type: 'string', description: 'Número do destinatário (formato wa_id)', example: '556799587200' },
+          phone_number_id: { type: 'string', description: 'ID do número remetente', example: '968853216316915' },
+          to: { type: 'string', description: 'Número do destinatário (wa_id)', example: '556799587200' },
           type: { type: 'string', enum: ['text', 'template', 'image', 'document', 'audio', 'video'], default: 'text' },
-          text: {
+          text: { type: 'object', properties: { body: { type: 'string', example: 'Olá! Como posso ajudar?' } } },
+          template: { type: 'object', properties: { name: { type: 'string' }, language: { type: 'object', properties: { code: { type: 'string' } } }, components: { type: 'array', items: { type: 'object' } } } },
+          image: { type: 'object', properties: { link: { type: 'string', format: 'uri' }, id: { type: 'string' }, caption: { type: 'string' } } },
+          document: { type: 'object', properties: { link: { type: 'string', format: 'uri' }, id: { type: 'string' }, caption: { type: 'string' }, filename: { type: 'string' } } },
+          audio: { type: 'object', properties: { link: { type: 'string', format: 'uri' }, id: { type: 'string' } } },
+          video: { type: 'object', properties: { link: { type: 'string', format: 'uri' }, id: { type: 'string' }, caption: { type: 'string' } } },
+        },
+      },
+      GhlLocation: {
+        type: 'object',
+        properties: {
+          location_id: { type: 'string', example: 'abc123LocationId' },
+          company_id: { type: 'string', nullable: true, example: 'companyXyz' },
+          expires_at: { type: 'string', format: 'date-time', example: '2026-03-05T20:30:39.000Z' },
+          created_at: { type: 'string', format: 'date-time' },
+          updated_at: { type: 'string', format: 'date-time' },
+        },
+      },
+      GhlOutboundMessage: {
+        type: 'object',
+        description: 'Payload enviado pelo GHL quando o agente responde no Conversations UI',
+        properties: {
+          type: { type: 'string', example: 'ProviderOutboundMessage' },
+          locationId: { type: 'string', example: 'abc123LocationId' },
+          contactId: { type: 'string', example: 'contactXyz' },
+          messageId: { type: 'string', example: 'msgId123' },
+          channel: { type: 'string', example: 'whatsapp' },
+          messageType: { type: 'string', example: 'SMS' },
+          content: {
             type: 'object',
             properties: {
-              body: { type: 'string', example: 'Olá! Como posso ajudar?' },
+              text: { type: 'string', example: 'Olá, como posso ajudar?' },
+              attachments: { type: 'array', items: { type: 'object' } },
             },
           },
-          template: {
+          endpoint: {
             type: 'object',
             properties: {
-              name: { type: 'string', example: 'boas_vindas_harucode' },
-              language: {
-                type: 'object',
-                properties: {
-                  code: { type: 'string', example: 'en' },
-                },
-              },
-              components: { type: 'array', items: { type: 'object' } },
-            },
-          },
-          image: {
-            type: 'object',
-            properties: {
-              link: { type: 'string', format: 'uri' },
-              id: { type: 'string' },
-              caption: { type: 'string' },
-            },
-          },
-          document: {
-            type: 'object',
-            properties: {
-              link: { type: 'string', format: 'uri' },
-              id: { type: 'string' },
-              caption: { type: 'string' },
-              filename: { type: 'string' },
-            },
-          },
-          audio: {
-            type: 'object',
-            properties: {
-              link: { type: 'string', format: 'uri' },
-              id: { type: 'string' },
-            },
-          },
-          video: {
-            type: 'object',
-            properties: {
-              link: { type: 'string', format: 'uri' },
-              id: { type: 'string' },
-              caption: { type: 'string' },
+              phone: { type: 'string', example: '+5567999587200' },
             },
           },
         },

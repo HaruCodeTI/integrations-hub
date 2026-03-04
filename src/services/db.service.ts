@@ -1,6 +1,8 @@
 import { Database } from 'bun:sqlite';
 import { randomUUID } from 'crypto';
 
+export type ClientType = 'webhook' | 'ghl';
+
 export interface Client {
   id: string;
   name: string;
@@ -8,6 +10,8 @@ export interface Client {
   webhook_url: string;
   auth_token: string | null;
   meta_token: string;
+  client_type: ClientType;
+  ghl_location_id: string | null;
   active: number;
   created_at: string;
   updated_at: string;
@@ -19,12 +23,42 @@ export type CreateClientInput = {
   webhook_url: string;
   auth_token?: string;
   meta_token: string;
+  client_type?: ClientType;
+  ghl_location_id?: string;
 };
 
 export type UpdateClientInput = Partial<Omit<CreateClientInput, 'phone_number_id'>> & {
   phone_number_id?: string;
   active?: number;
 };
+
+// ─── GHL Types ──────────────────────────────────────────────
+
+export interface GhlLocation {
+  location_id: string;
+  company_id: string | null;
+  access_token: string;
+  refresh_token: string;
+  expires_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type UpsertGhlLocationInput = {
+  location_id: string;
+  company_id?: string;
+  access_token: string;
+  refresh_token: string;
+  expires_at: string;
+};
+
+export interface GhlContact {
+  id: number;
+  location_id: string;
+  contact_id: string;
+  phone_number: string;
+  created_at: string;
+}
 
 class DatabaseService {
   private db: Database;
@@ -44,9 +78,40 @@ class DatabaseService {
         webhook_url TEXT NOT NULL,
         auth_token TEXT,
         meta_token TEXT NOT NULL,
+        client_type TEXT DEFAULT 'webhook',
+        ghl_location_id TEXT,
         active INTEGER DEFAULT 1,
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
+      );
+    `);
+
+    // Migração: adiciona colunas novas se não existem (safe para DB existente)
+    try { this.db.exec(`ALTER TABLE clients ADD COLUMN client_type TEXT DEFAULT 'webhook'`); } catch {}
+    try { this.db.exec(`ALTER TABLE clients ADD COLUMN ghl_location_id TEXT`); } catch {}
+
+    // Tabela de locations GHL (tokens OAuth por sub-account)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ghl_locations (
+        location_id TEXT PRIMARY KEY,
+        company_id TEXT,
+        access_token TEXT NOT NULL,
+        refresh_token TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+    `);
+
+    // Tabela de mapeamento contato GHL ↔ número WhatsApp
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ghl_contacts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        location_id TEXT NOT NULL,
+        contact_id TEXT NOT NULL,
+        phone_number TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(location_id, phone_number)
       );
     `);
 
@@ -69,13 +134,21 @@ class DatabaseService {
     return this.db.query('SELECT * FROM clients WHERE phone_number_id = ? AND active = 1').get(phoneNumberId) as Client | null;
   }
 
+  getClientByGhlLocationId(locationId: string): Client | null {
+    return this.db.query('SELECT * FROM clients WHERE ghl_location_id = ? AND active = 1').get(locationId) as Client | null;
+  }
+
   createClient(input: CreateClientInput): Client {
     const id = randomUUID();
     const stmt = this.db.prepare(`
-      INSERT INTO clients (id, name, phone_number_id, webhook_url, auth_token, meta_token)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO clients (id, name, phone_number_id, webhook_url, auth_token, meta_token, client_type, ghl_location_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    stmt.run(id, input.name, input.phone_number_id, input.webhook_url, input.auth_token || null, input.meta_token);
+    stmt.run(
+      id, input.name, input.phone_number_id, input.webhook_url,
+      input.auth_token || null, input.meta_token,
+      input.client_type || 'webhook', input.ghl_location_id || null
+    );
     return this.getClientById(id)!;
   }
 
@@ -91,6 +164,8 @@ class DatabaseService {
     if (input.webhook_url !== undefined) { fields.push('webhook_url = ?'); values.push(input.webhook_url); }
     if (input.auth_token !== undefined) { fields.push('auth_token = ?'); values.push(input.auth_token); }
     if (input.meta_token !== undefined) { fields.push('meta_token = ?'); values.push(input.meta_token); }
+    if (input.client_type !== undefined) { fields.push('client_type = ?'); values.push(input.client_type); }
+    if (input.ghl_location_id !== undefined) { fields.push('ghl_location_id = ?'); values.push(input.ghl_location_id); }
     if (input.active !== undefined) { fields.push('active = ?'); values.push(input.active); }
 
     if (fields.length === 0) return existing;
@@ -105,6 +180,54 @@ class DatabaseService {
   deleteClient(id: string): boolean {
     const result = this.db.prepare('UPDATE clients SET active = 0, updated_at = datetime(\'now\') WHERE id = ?').run(id);
     return result.changes > 0;
+  }
+
+  // ─── GHL Locations (OAuth tokens) ──────────────────────────
+
+  getGhlLocation(locationId: string): GhlLocation | null {
+    return this.db.query('SELECT * FROM ghl_locations WHERE location_id = ?').get(locationId) as GhlLocation | null;
+  }
+
+  getAllGhlLocations(): GhlLocation[] {
+    return this.db.query('SELECT * FROM ghl_locations ORDER BY created_at DESC').all() as GhlLocation[];
+  }
+
+  upsertGhlLocation(input: UpsertGhlLocationInput): GhlLocation {
+    const existing = this.getGhlLocation(input.location_id);
+    if (existing) {
+      this.db.prepare(`
+        UPDATE ghl_locations
+        SET access_token = ?, refresh_token = ?, expires_at = ?, company_id = ?, updated_at = datetime('now')
+        WHERE location_id = ?
+      `).run(input.access_token, input.refresh_token, input.expires_at, input.company_id || null, input.location_id);
+    } else {
+      this.db.prepare(`
+        INSERT INTO ghl_locations (location_id, company_id, access_token, refresh_token, expires_at)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(input.location_id, input.company_id || null, input.access_token, input.refresh_token, input.expires_at);
+    }
+    return this.getGhlLocation(input.location_id)!;
+  }
+
+  deleteGhlLocation(locationId: string): boolean {
+    const result = this.db.prepare('DELETE FROM ghl_locations WHERE location_id = ?').run(locationId);
+    return result.changes > 0;
+  }
+
+  // ─── GHL Contacts (mapeamento phone ↔ contactId) ──────────
+
+  getGhlContact(locationId: string, phoneNumber: string): GhlContact | null {
+    return this.db.query(
+      'SELECT * FROM ghl_contacts WHERE location_id = ? AND phone_number = ?'
+    ).get(locationId, phoneNumber) as GhlContact | null;
+  }
+
+  upsertGhlContact(locationId: string, contactId: string, phoneNumber: string): void {
+    this.db.prepare(`
+      INSERT INTO ghl_contacts (location_id, contact_id, phone_number)
+      VALUES (?, ?, ?)
+      ON CONFLICT(location_id, phone_number) DO UPDATE SET contact_id = ?
+    `).run(locationId, contactId, phoneNumber);
   }
 }
 

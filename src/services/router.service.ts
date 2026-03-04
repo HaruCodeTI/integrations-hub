@@ -58,7 +58,14 @@ class RouterService {
    * Retorna a URL de destino para um phone_number_id.
    * Se não encontrar no banco, usa o fallback legado (WEBHOOK_URL_N8N).
    */
-  getDestination(phoneNumberId: string): { webhookUrl: string; authToken: string | null; metaToken: string | null; clientName: string } {
+  getDestination(phoneNumberId: string): {
+    webhookUrl: string;
+    authToken: string | null;
+    metaToken: string | null;
+    clientName: string;
+    clientType: string;
+    ghlLocationId: string | null;
+  } {
     const client = this.resolve(phoneNumberId);
 
     if (client) {
@@ -67,6 +74,8 @@ class RouterService {
         authToken: client.auth_token,
         metaToken: client.meta_token,
         clientName: client.name,
+        clientType: client.client_type || 'webhook',
+        ghlLocationId: client.ghl_location_id || null,
       };
     }
 
@@ -77,6 +86,8 @@ class RouterService {
         authToken: null,
         metaToken: null,
         clientName: 'Legado (N8N fallback)',
+        clientType: 'webhook',
+        ghlLocationId: null,
       };
     }
 
@@ -85,6 +96,8 @@ class RouterService {
       authToken: null,
       metaToken: null,
       clientName: 'SEM DESTINO',
+      clientType: 'webhook',
+      ghlLocationId: null,
     };
   }
 }

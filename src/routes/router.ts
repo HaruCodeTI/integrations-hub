@@ -1,5 +1,6 @@
 import { WebhookController } from '../controllers/webhook.controller';
 import { ApiController } from '../controllers/api.controller';
+import { GhlController } from '../controllers/ghl.controller';
 import { validateApiKey, unauthorizedResponse } from '../middlewares/apiAuth';
 import { privacyPolicyHTML } from '../pages/privacy';
 import { termsOfUseHTML } from '../pages/terms';
@@ -65,6 +66,23 @@ export const appRouter = async (req: Request): Promise<Response> => {
     }
   }
 
+  // ─── Integrations (LeadConnector/GHL) ────────────────────
+
+  // GET /integrations/install — Redireciona para autorização no Marketplace
+  if (method === "GET" && pathname === "/integrations/install") {
+    return GhlController.install();
+  }
+
+  // GET /integrations/oauth/callback — Callback do OAuth
+  if (method === "GET" && pathname === "/integrations/oauth/callback") {
+    return await GhlController.oauthCallback(url);
+  }
+
+  // POST /integrations/webhook/outbound — Recebe mensagens enviadas via CRM UI
+  if (method === "POST" && pathname === "/integrations/webhook/outbound") {
+    return await GhlController.handleOutbound(req);
+  }
+
   // ─── API Protegida (requer GATEWAY_API_KEY) ──────────────
 
   if (pathname.startsWith("/api/")) {
@@ -97,6 +115,11 @@ export const appRouter = async (req: Request): Promise<Response> => {
     if (method === "DELETE" && pathname.startsWith("/api/clients/")) {
       const id = extractPathId(pathname, "/api/clients/");
       if (id) return ApiController.deleteClient(id);
+    }
+
+    // GET /api/ghl/locations — Listar locations GHL conectadas
+    if (method === "GET" && pathname === "/api/ghl/locations") {
+      return GhlController.listLocations();
     }
 
     return new Response(JSON.stringify({ error: "Rota API não encontrada" }), {
