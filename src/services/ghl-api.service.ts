@@ -29,10 +29,9 @@ class GhlApiService {
     const token = await ghlOAuth.getValidToken(params.locationId);
 
     const body = {
-      type: 'SMS',
+      type: 'Custom',
       contactId: params.contactId,
       conversationProviderId: env.GHL_CONVERSATION_PROVIDER_ID,
-      channel: 'whatsapp',
       endpoint: {
         phone: params.phoneFrom,
       },
