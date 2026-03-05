@@ -1,21 +1,84 @@
 import { db } from './db.service';
+import { env } from '../config/env';
+import { createHmac } from 'crypto';
 
 const META_API_BASE = 'https://graph.facebook.com/v25.0';
 
+// Cache em memória para mídia baixada (evita re-download)
+// Limpa automaticamente após 10 minutos
+interface MediaCacheEntry {
+  buffer: Buffer;
+  mimeType: string;
+  expiresAt: number;
+}
+
+const mediaCache = new Map<string, MediaCacheEntry>();
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutos
+
+// Limpa cache expirado a cada 2 minutos
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of mediaCache) {
+    if (entry.expiresAt < now) {
+      mediaCache.delete(key);
+    }
+  }
+}, 2 * 60 * 1000);
+
 /**
- * MediaService — Download e resolução de mídia da Meta API
+ * MediaService — Download, cache e proxy de mídia da Meta API
  *
  * Fluxo para obter uma mídia do WhatsApp:
  * 1. GET /{media_id} → retorna a URL temporária da mídia
  * 2. GET na URL temporária → retorna os bytes da mídia
+ * 3. Cache em memória por 10 min para servir via proxy público
  *
- * A URL temporária expira, então sempre resolve antes de usar.
+ * O GHL exige URLs HTTP públicas nos attachments, então servimos
+ * a mídia via /media/:token endpoint no gateway.
  */
 class MediaService {
 
   /**
+   * Gera um token HMAC para proteger o endpoint de proxy.
+   * Formato: {mediaId}.{phoneNumberId}.{hmac}
+   */
+  generateMediaToken(mediaId: string, phoneNumberId: string): string {
+    const payload = `${mediaId}.${phoneNumberId}`;
+    const hmac = createHmac('sha256', env.GATEWAY_API_KEY || 'default-secret')
+      .update(payload)
+      .digest('hex')
+      .substring(0, 16); // 16 chars é suficiente para evitar brute force
+    return `${mediaId}.${phoneNumberId}.${hmac}`;
+  }
+
+  /**
+   * Valida um token de proxy e retorna os componentes.
+   */
+  parseMediaToken(token: string): { mediaId: string; phoneNumberId: string } | null {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+
+    const [mediaId, phoneNumberId, hmac] = parts;
+    const expectedHmac = createHmac('sha256', env.GATEWAY_API_KEY || 'default-secret')
+      .update(`${mediaId}.${phoneNumberId}`)
+      .digest('hex')
+      .substring(0, 16);
+
+    if (hmac !== expectedHmac) return null;
+    return { mediaId, phoneNumberId };
+  }
+
+  /**
+   * Gera a URL pública do proxy para uma mídia.
+   * Ex: https://gateway.harucode.com.br/media/123456.968853.abcdef1234567890
+   */
+  getProxyUrl(mediaId: string, phoneNumberId: string): string {
+    const token = this.generateMediaToken(mediaId, phoneNumberId);
+    return `${env.GATEWAY_PUBLIC_URL}/media/${token}`;
+  }
+
+  /**
    * Obtém a URL temporária de download de uma mídia.
-   * Retorna { url, mime_type, sha256, file_size }
    */
   async getMediaUrl(mediaId: string, phoneNumberId: string): Promise<{
     url: string;
@@ -39,16 +102,23 @@ class MediaService {
   }
 
   /**
-   * Baixa os bytes da mídia e retorna como base64 data URL.
-   * Usado para enviar como attachment para o GHL.
+   * Baixa a mídia e armazena no cache.
+   * Retorna o buffer e mimeType.
    */
-  async downloadAsDataUrl(mediaId: string, phoneNumberId: string): Promise<{
-    dataUrl: string;
+  async downloadAndCache(mediaId: string, phoneNumberId: string): Promise<{
+    buffer: Buffer;
     mimeType: string;
     fileSize: number;
   }> {
-    const mediaInfo = await this.getMediaUrl(mediaId, phoneNumberId);
+    // Verifica cache primeiro
+    const cacheKey = `${mediaId}.${phoneNumberId}`;
+    const cached = mediaCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return { buffer: cached.buffer, mimeType: cached.mimeType, fileSize: cached.buffer.length };
+    }
 
+    // Resolve URL e baixa
+    const mediaInfo = await this.getMediaUrl(mediaId, phoneNumberId);
     const client = db.getClientByPhoneId(phoneNumberId);
     if (!client) throw new Error(`Cliente não encontrado para phone: ${phoneNumberId}`);
 
@@ -60,30 +130,46 @@ class MediaService {
       throw new Error(`Download de mídia falhou: ${response.status}`);
     }
 
-    const buffer = await response.arrayBuffer();
-    const base64 = Buffer.from(buffer).toString('base64');
-    const dataUrl = `data:${mediaInfo.mime_type};base64,${base64}`;
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    // Armazena no cache
+    mediaCache.set(cacheKey, {
+      buffer,
+      mimeType: mediaInfo.mime_type,
+      expiresAt: Date.now() + CACHE_TTL,
+    });
 
     return {
-      dataUrl,
+      buffer,
       mimeType: mediaInfo.mime_type,
-      fileSize: mediaInfo.file_size,
+      fileSize: buffer.length,
     };
   }
 
   /**
-   * Baixa a mídia e retorna a URL temporária da Meta (para uso direto).
-   * Mais leve que base64, mas a URL expira.
+   * Serve a mídia a partir do cache ou baixa sob demanda.
+   * Chamado pelo endpoint GET /media/:token
    */
-  async getDirectUrl(mediaId: string, phoneNumberId: string): Promise<{
-    url: string;
-    mimeType: string;
-  }> {
-    const mediaInfo = await this.getMediaUrl(mediaId, phoneNumberId);
-    return {
-      url: mediaInfo.url,
-      mimeType: mediaInfo.mime_type,
-    };
+  async serveMedia(token: string): Promise<Response> {
+    const parsed = this.parseMediaToken(token);
+    if (!parsed) {
+      return new Response('Invalid token', { status: 403 });
+    }
+
+    try {
+      const { buffer, mimeType } = await this.downloadAndCache(parsed.mediaId, parsed.phoneNumberId);
+      return new Response(buffer, {
+        status: 200,
+        headers: {
+          'Content-Type': mimeType,
+          'Content-Length': buffer.length.toString(),
+          'Cache-Control': 'public, max-age=600', // 10 min
+        },
+      });
+    } catch (err: any) {
+      console.error(`[❌ Media Proxy] Erro ao servir mídia:`, err.message);
+      return new Response('Media not found', { status: 404 });
+    }
   }
 
   /**

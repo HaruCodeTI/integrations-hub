@@ -6,6 +6,7 @@ import { privacyPolicyHTML } from '../pages/privacy';
 import { termsOfUseHTML } from '../pages/terms';
 import { getScalarHTML } from '../docs/scalar';
 import { openApiSpec } from '../docs/openapi';
+import { mediaService } from '../services/media.service';
 
 const htmlResponse = (html: string) =>
   new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" }, status: 200 });
@@ -63,6 +64,16 @@ export const appRouter = async (req: Request): Promise<Response> => {
     }
     if (method === "POST") {
       return await WebhookController.handleMessage(req);
+    }
+  }
+
+  // ─── Media Proxy (público, protegido por HMAC token) ────
+  // GET /media/:token — Serve mídia do WhatsApp para o GHL acessar
+
+  if (method === "GET" && pathname.startsWith("/media/")) {
+    const token = pathname.slice("/media/".length);
+    if (token) {
+      return await mediaService.serveMedia(token);
     }
   }
 

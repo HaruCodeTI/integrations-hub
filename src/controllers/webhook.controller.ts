@@ -150,22 +150,22 @@ export class WebhookController {
       name: contactName,
     });
 
-    // 2. Se tiver mídia, baixa e monta o attachment
-    let attachments: any[] | undefined;
+    // 2. Se tiver mídia, pré-baixa no cache e gera URL de proxy pública
+    let attachments: string[] | undefined;
     if (mediaInfo) {
       try {
         console.log(`[📎 Mídia] Baixando ${mediaInfo.type} (${mediaInfo.mediaId}) de ${phoneFrom}...`);
-        const downloaded = await mediaService.downloadAsDataUrl(mediaInfo.mediaId, phoneNumberId);
-        const ext = mediaService.getExtensionForMimeType(downloaded.mimeType);
-        const filename = mediaInfo.filename || `${mediaInfo.type}_${Date.now()}.${ext}`;
 
-        attachments = [{
-          type: downloaded.mimeType,
-          url: downloaded.dataUrl,
-          name: filename,
-        }];
+        // Pré-baixa no cache para que o proxy sirva instantaneamente
+        const downloaded = await mediaService.downloadAndCache(mediaInfo.mediaId, phoneNumberId);
 
-        console.log(`[📎 Mídia] ${mediaInfo.type} baixado: ${filename} (${(downloaded.fileSize / 1024).toFixed(1)}KB)`);
+        // Gera URL pública de proxy protegida por HMAC
+        const proxyUrl = mediaService.getProxyUrl(mediaInfo.mediaId, phoneNumberId);
+
+        // GHL espera attachments como array de strings URL
+        attachments = [proxyUrl];
+
+        console.log(`[📎 Mídia] ${mediaInfo.type} cacheado: ${(downloaded.fileSize / 1024).toFixed(1)}KB → ${proxyUrl}`);
       } catch (err) {
         console.error(`[❌ Mídia] Erro ao baixar ${mediaInfo.type}:`, err);
         // Se falhar o download, envia sem attachment mas com indicação no texto

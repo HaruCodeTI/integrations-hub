@@ -25,7 +25,7 @@ class GhlApiService {
     phoneFrom: string;
     phoneTo: string;
     messageId?: string;
-    attachments?: Array<{ type: string; url: string; name: string }>;
+    attachments?: string[];
   }): Promise<any> {
     const token = await ghlOAuth.getValidToken(params.locationId);
 
