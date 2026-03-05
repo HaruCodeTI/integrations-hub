@@ -159,8 +159,8 @@ export class WebhookController {
         // Pré-baixa no cache para que o proxy sirva instantaneamente
         const downloaded = await mediaService.downloadAndCache(mediaInfo.mediaId, phoneNumberId);
 
-        // Gera URL pública de proxy protegida por HMAC
-        const proxyUrl = mediaService.getProxyUrl(mediaInfo.mediaId, phoneNumberId);
+        // Gera URL pública de proxy protegida por HMAC (com extensão para preview no GHL)
+        const proxyUrl = mediaService.getProxyUrl(mediaInfo.mediaId, phoneNumberId, downloaded.mimeType);
 
         // GHL espera attachments como array de strings URL
         attachments = [proxyUrl];

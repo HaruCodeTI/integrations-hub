@@ -70,11 +70,13 @@ class MediaService {
 
   /**
    * Gera a URL pública do proxy para uma mídia.
-   * Ex: https://gateway.harucode.com.br/media/123456.968853.abcdef1234567890
+   * Ex: https://gateway.harucode.com.br/media/123456.968853.abcdef1234567890.jpg
+   * A extensão é adicionada para que o GHL reconheça o tipo e exiba preview.
    */
-  getProxyUrl(mediaId: string, phoneNumberId: string): string {
+  getProxyUrl(mediaId: string, phoneNumberId: string, mimeType?: string): string {
     const token = this.generateMediaToken(mediaId, phoneNumberId);
-    return `${env.GATEWAY_PUBLIC_URL}/media/${token}`;
+    const ext = mimeType ? this.getExtensionForMimeType(mimeType) : '';
+    return `${env.GATEWAY_PUBLIC_URL}/media/${token}${ext ? '.' + ext : ''}`;
   }
 
   /**
@@ -150,7 +152,9 @@ class MediaService {
    * Serve a mídia a partir do cache ou baixa sob demanda.
    * Chamado pelo endpoint GET /media/:token
    */
-  async serveMedia(token: string): Promise<Response> {
+  async serveMedia(rawToken: string): Promise<Response> {
+    // Remove extensão de arquivo se presente (ex: .jpg, .png, .mp4)
+    const token = rawToken.replace(/\.\w+$/, '');
     const parsed = this.parseMediaToken(token);
     if (!parsed) {
       return new Response('Invalid token', { status: 403 });

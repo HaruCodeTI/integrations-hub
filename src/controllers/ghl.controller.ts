@@ -178,12 +178,40 @@ export class GhlController {
 
       // Se tiver attachments, envia cada um como mídia separada
       if (attachments.length > 0) {
-        for (const att of attachments) {
-          const attUrl = att.url || att.link || '';
-          if (!attUrl) continue;
+        for (let i = 0; i < attachments.length; i++) {
+          const att = attachments[i];
 
-          const mimeType = (att.contentType || att.type || '').toLowerCase();
-          const caption = messageText || undefined; // Usa o texto como caption na primeira mídia
+          // Log detalhado para inspecionar o formato real do GHL
+          console.log(`[🔍 GHL Attachment ${i}] tipo: ${typeof att}, valor:`, typeof att === 'string' ? att : JSON.stringify(att));
+
+          // GHL pode enviar attachments como strings de URL OU como objetos
+          let attUrl = '';
+          let mimeType = '';
+          let filename = '';
+
+          if (typeof att === 'string') {
+            // Formato string: attachment é diretamente a URL
+            attUrl = att;
+            // Tenta inferir o mimeType pela extensão da URL
+            mimeType = GhlController.inferMimeTypeFromUrl(attUrl);
+          } else if (att && typeof att === 'object') {
+            // Formato objeto: tenta diversas propriedades conhecidas
+            attUrl = att.url || att.link || att.href || att.src || att.fileUrl || '';
+            mimeType = (att.contentType || att.mimeType || att.mime_type || att.type || '').toLowerCase();
+            filename = att.name || att.filename || att.fileName || '';
+          }
+
+          if (!attUrl) {
+            console.warn(`[⚠️ GHL Attachment ${i}] URL não encontrada, pulando. Raw:`, JSON.stringify(att));
+            continue;
+          }
+
+          // Se não tem mimeType, infere pela URL
+          if (!mimeType) {
+            mimeType = GhlController.inferMimeTypeFromUrl(attUrl);
+          }
+
+          const caption = (i === 0 && messageText) ? messageText : undefined; // Caption só no primeiro attachment
 
           let sendInput: any = { phone_number_id: client.phone_number_id, to };
 
@@ -199,14 +227,16 @@ export class GhlController {
           } else {
             // Trata como documento (PDF, DOCX, etc)
             sendInput.type = 'document';
-            sendInput.document = { link: attUrl, caption, filename: att.name || att.filename || 'file' };
+            sendInput.document = { link: attUrl, caption, filename: filename || 'file' };
           }
+
+          console.log(`[📎 GHL → WhatsApp] Enviando ${sendInput.type}: ${attUrl.substring(0, 100)}...`);
 
           const attResult = await sender.send(sendInput);
           if (!attResult.success) {
             console.error(`[❌ GHL → WhatsApp] Erro ao enviar attachment:`, attResult.error);
           } else {
-            console.log(`[📎 GHL → WhatsApp] Attachment enviado: ${mimeType}`);
+            console.log(`[📎 GHL → WhatsApp] Attachment enviado: ${sendInput.type}`);
           }
         }
       }
@@ -263,6 +293,27 @@ export class GhlController {
       console.error(`[❌ GHL Outbound] Exceção:`, error);
       return jsonResponse({ error: 'Erro interno ao processar outbound', details: error.message }, 500);
     }
+  }
+
+  /**
+   * Infere o mimeType a partir da extensão da URL.
+   */
+  private static inferMimeTypeFromUrl(url: string): string {
+    const cleanUrl = url.split('?')[0].split('#')[0].toLowerCase();
+    const ext = cleanUrl.split('.').pop() || '';
+    const map: Record<string, string> = {
+      'jpg': 'image/jpeg', 'jpeg': 'image/jpeg', 'png': 'image/png',
+      'gif': 'image/gif', 'webp': 'image/webp', 'svg': 'image/svg+xml',
+      'mp4': 'video/mp4', '3gp': 'video/3gpp', 'mov': 'video/quicktime',
+      'mp3': 'audio/mpeg', 'ogg': 'audio/ogg', 'm4a': 'audio/mp4',
+      'amr': 'audio/amr', 'wav': 'audio/wav',
+      'pdf': 'application/pdf', 'doc': 'application/msword',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'xls': 'application/vnd.ms-excel',
+      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'txt': 'text/plain',
+    };
+    return map[ext] || '';
   }
 
   /**
