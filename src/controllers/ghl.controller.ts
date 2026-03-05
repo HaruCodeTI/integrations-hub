@@ -151,10 +151,17 @@ export class GhlController {
       // GHL envia campos no top-level: "message" e "phone" (não content.text / endpoint.phone)
       const messageText = body.message || body.content?.text || '';
       const phoneNumber = body.phone || body.endpoint?.phone || '';
+      const attachments: any[] = body.attachments || [];
 
-      if (!locationId || !messageText || !phoneNumber) {
+      if (!locationId || !phoneNumber) {
         console.warn(`[⚠️ GHL Outbound] Payload incompleto:`, body);
-        return jsonResponse({ error: 'Payload incompleto — locationId, message e phone são obrigatórios' }, 400);
+        return jsonResponse({ error: 'Payload incompleto — locationId e phone são obrigatórios' }, 400);
+      }
+
+      // Precisa ter texto OU attachments
+      if (!messageText && attachments.length === 0) {
+        console.warn(`[⚠️ GHL Outbound] Sem conteúdo:`, body);
+        return jsonResponse({ error: 'Payload sem conteúdo — message ou attachments são obrigatórios' }, 400);
       }
 
       // Busca o cliente vinculado a essa location
@@ -167,15 +174,59 @@ export class GhlController {
       // Normaliza o telefone (remove + e espaços)
       const to = phoneNumber.replace(/[^0-9]/g, '');
 
-      console.log(`[📤 GHL → WhatsApp] Enviando de "${client.name}" (${client.phone_number_id}) para ${to}: "${messageText.substring(0, 50)}..."`);
+      console.log(`[📤 GHL → WhatsApp] Enviando de "${client.name}" (${client.phone_number_id}) para ${to}: "${(messageText || '[mídia]').substring(0, 50)}..." ${attachments.length > 0 ? `(+${attachments.length} attachment(s))` : ''}`);
 
-      // Envia via Meta API usando o sender centralizado
-      const result = await sender.send({
-        phone_number_id: client.phone_number_id,
-        to,
-        type: 'text',
-        text: { body: messageText },
-      });
+      // Se tiver attachments, envia cada um como mídia separada
+      if (attachments.length > 0) {
+        for (const att of attachments) {
+          const attUrl = att.url || att.link || '';
+          if (!attUrl) continue;
+
+          const mimeType = (att.contentType || att.type || '').toLowerCase();
+          const caption = messageText || undefined; // Usa o texto como caption na primeira mídia
+
+          let sendInput: any = { phone_number_id: client.phone_number_id, to };
+
+          if (mimeType.startsWith('image/')) {
+            sendInput.type = 'image';
+            sendInput.image = { link: attUrl, caption };
+          } else if (mimeType.startsWith('video/')) {
+            sendInput.type = 'video';
+            sendInput.video = { link: attUrl, caption };
+          } else if (mimeType.startsWith('audio/')) {
+            sendInput.type = 'audio';
+            sendInput.audio = { link: attUrl };
+          } else {
+            // Trata como documento (PDF, DOCX, etc)
+            sendInput.type = 'document';
+            sendInput.document = { link: attUrl, caption, filename: att.name || att.filename || 'file' };
+          }
+
+          const attResult = await sender.send(sendInput);
+          if (!attResult.success) {
+            console.error(`[❌ GHL → WhatsApp] Erro ao enviar attachment:`, attResult.error);
+          } else {
+            console.log(`[📎 GHL → WhatsApp] Attachment enviado: ${mimeType}`);
+          }
+        }
+      }
+
+      // Envia mensagem de texto (se houver texto E não foi usado como caption)
+      let result;
+      if (messageText && attachments.length === 0) {
+        result = await sender.send({
+          phone_number_id: client.phone_number_id,
+          to,
+          type: 'text',
+          text: { body: messageText },
+        });
+      } else if (messageText && attachments.length > 0) {
+        // Texto já foi enviado como caption do attachment
+        result = { success: true };
+      } else {
+        // Só attachment, sem texto
+        result = { success: true };
+      }
 
       if (result.success) {
         // Atualiza status no GHL para "sent"

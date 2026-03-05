@@ -2,6 +2,7 @@ import { env } from '../config/env';
 import { verifyMetaSignature } from '../middlewares/metaSecurity';
 import { router } from '../services/router.service';
 import { ghlApi } from '../services/ghl-api.service';
+import { mediaService } from '../services/media.service';
 
 export class WebhookController {
 
@@ -39,15 +40,19 @@ export class WebhookController {
           const displayPhone = changes.metadata.display_phone_number;
           const msg = changes.messages[0];
           const from = msg.from;
-          const text = msg.text?.body || "Mídia/Interação recebida";
           const waMessageId = msg.id;
           const contactName = changes.contacts?.[0]?.profile?.name;
+
+          // Extrai mídia se existir
+          const mediaInfo = mediaService.extractMediaFromMessage(msg);
+          const text = msg.text?.body || mediaInfo?.caption || '';
+          const msgType = msg.type || 'text';
 
           // Resolve o destino via roteamento multi-tenant
           const destination = router.getDestination(phoneId);
 
-          console.log(`[✅ Autenticado] Mensagem de ${from} no Bot ID: ${phoneId}`);
-          console.log(`[💬 Conteúdo]: ${text}`);
+          console.log(`[✅ Autenticado] Mensagem de ${from} no Bot ID: ${phoneId} (tipo: ${msgType})`);
+          console.log(`[💬 Conteúdo]: ${text || `[${msgType}]`}`);
 
           // ─── GHL Client: envia via GHL Conversations API ─────
           if (destination.clientType === 'ghl' && destination.ghlLocationId) {
@@ -57,9 +62,11 @@ export class WebhookController {
               locationId: destination.ghlLocationId,
               phoneFrom: from,
               phoneTo: displayPhone || phoneId,
+              phoneNumberId: phoneId,
               message: text,
               messageId: waMessageId,
               contactName: contactName,
+              mediaInfo: mediaInfo || undefined,
             }).catch(err => console.error(`[❌ GHL Inbound] Erro:`, err));
 
           // ─── Webhook Client: forward padrão (n8n, etc) ───────
@@ -115,17 +122,26 @@ export class WebhookController {
   /**
    * Processa uma mensagem inbound para GHL:
    * 1. Busca/cria o contato no GHL pela phone
-   * 2. Envia a mensagem inbound via GHL Conversations API
+   * 2. Se tiver mídia, baixa e prepara o attachment
+   * 3. Envia a mensagem inbound via GHL Conversations API
    */
   private static async handleGhlInbound(params: {
     locationId: string;
     phoneFrom: string;
     phoneTo: string;
+    phoneNumberId: string;
     message: string;
     messageId?: string;
     contactName?: string;
+    mediaInfo?: {
+      mediaId: string;
+      mimeType: string;
+      caption?: string;
+      filename?: string;
+      type: 'image' | 'audio' | 'video' | 'document' | 'sticker';
+    };
   }): Promise<void> {
-    const { locationId, phoneFrom, phoneTo, message, messageId, contactName } = params;
+    const { locationId, phoneFrom, phoneTo, phoneNumberId, message, messageId, contactName, mediaInfo } = params;
 
     // 1. Busca ou cria contato no GHL
     const contactId = await ghlApi.findOrCreateContact({
@@ -134,16 +150,42 @@ export class WebhookController {
       name: contactName,
     });
 
-    // 2. Envia mensagem inbound para o GHL
+    // 2. Se tiver mídia, baixa e monta o attachment
+    let attachments: any[] | undefined;
+    if (mediaInfo) {
+      try {
+        console.log(`[📎 Mídia] Baixando ${mediaInfo.type} (${mediaInfo.mediaId}) de ${phoneFrom}...`);
+        const downloaded = await mediaService.downloadAsDataUrl(mediaInfo.mediaId, phoneNumberId);
+        const ext = mediaService.getExtensionForMimeType(downloaded.mimeType);
+        const filename = mediaInfo.filename || `${mediaInfo.type}_${Date.now()}.${ext}`;
+
+        attachments = [{
+          type: downloaded.mimeType,
+          url: downloaded.dataUrl,
+          name: filename,
+        }];
+
+        console.log(`[📎 Mídia] ${mediaInfo.type} baixado: ${filename} (${(downloaded.fileSize / 1024).toFixed(1)}KB)`);
+      } catch (err) {
+        console.error(`[❌ Mídia] Erro ao baixar ${mediaInfo.type}:`, err);
+        // Se falhar o download, envia sem attachment mas com indicação no texto
+        if (!message) {
+          params.message = `[${mediaInfo.type} não disponível]`;
+        }
+      }
+    }
+
+    // 3. Envia mensagem inbound para o GHL
     await ghlApi.addInboundMessage({
       locationId,
       contactId,
-      message,
+      message: message || (mediaInfo ? `[${mediaInfo.type}]` : ''),
       phoneFrom,
       phoneTo,
       messageId,
+      attachments,
     });
 
-    console.log(`[📥 GHL Inbound] Mensagem de ${phoneFrom} enviada para GHL (contact: ${contactId})`);
+    console.log(`[📥 GHL Inbound] Mensagem de ${phoneFrom} enviada para GHL (contact: ${contactId}${attachments ? `, com ${attachments.length} attachment(s)` : ''})`);
   }
 }

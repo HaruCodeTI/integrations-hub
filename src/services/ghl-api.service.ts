@@ -25,6 +25,7 @@ class GhlApiService {
     phoneFrom: string;
     phoneTo: string;
     messageId?: string;
+    attachments?: Array<{ type: string; url: string; name: string }>;
   }): Promise<any> {
     const token = await ghlOAuth.getValidToken(params.locationId);
 
@@ -41,6 +42,11 @@ class GhlApiService {
     // altId permite rastrear a mensagem original do WhatsApp
     if (params.messageId) {
       body.altId = params.messageId;
+    }
+
+    // Attachments (mídia do WhatsApp)
+    if (params.attachments && params.attachments.length > 0) {
+      body.attachments = params.attachments;
     }
 
     console.log(`[📥 GHL API] Enviando inbound body:`, JSON.stringify(body).substring(0, 400));
