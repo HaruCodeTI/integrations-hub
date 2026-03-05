@@ -3,6 +3,7 @@ import { verifyMetaSignature } from '../middlewares/metaSecurity';
 import { router } from '../services/router.service';
 import { ghlApi } from '../services/ghl-api.service';
 import { mediaService } from '../services/media.service';
+import { db } from '../services/db.service';
 
 export class WebhookController {
 
@@ -95,16 +96,39 @@ export class WebhookController {
         // Captura status updates (delivered, read, sent)
         if (changes?.statuses) {
           const status = changes.statuses[0];
-          console.log(`[📊 Status] ${status.status} — msg ${status.id} para ${status.recipient_id}`);
+          const wamid = status.id;
+          const statusName = status.status; // sent, delivered, read, failed
+          console.log(`[📊 Status] ${statusName} — msg ${wamid} para ${status.recipient_id}`);
 
-          // Para clientes GHL, o status update já é feito no outbound handler (ghl.controller.ts)
-          // usando o messageId correto do GHL. O webhook da Meta envia wamid (WhatsApp ID),
-          // que não é reconhecido pelo GHL, então ignoramos aqui para evitar erros 401.
+          // Para clientes GHL, busca o mapeamento wamid → GHL messageId
           const phoneId = changes.metadata?.phone_number_id;
           if (phoneId) {
             const destination = router.getDestination(phoneId);
             if (destination.clientType === 'ghl' && destination.ghlLocationId) {
-              console.log(`[📊 GHL Status] Ignorando status "${status.status}" via Meta webhook (wamid não mapeado para GHL messageId)`);
+              const mapping = db.getMessageMapping(wamid);
+              if (mapping) {
+                // Mapeia status da Meta para status do GHL
+                const ghlStatus = statusName === 'read' ? 'read'
+                  : statusName === 'delivered' ? 'delivered'
+                  : statusName === 'sent' ? 'sent'
+                  : statusName === 'failed' ? 'failed'
+                  : null;
+
+                if (ghlStatus) {
+                  ghlApi.updateMessageStatus({
+                    locationId: mapping.location_id,
+                    messageId: mapping.ghl_message_id,
+                    status: ghlStatus as any,
+                    error: statusName === 'failed' ? (status.errors?.[0]?.title || 'Delivery failed') : undefined,
+                  }).then(() => {
+                    console.log(`[📊 GHL Status] ${mapping.ghl_message_id} → ${ghlStatus}`);
+                  }).catch((err) => {
+                    console.warn(`[⚠️ GHL Status] Erro ao atualizar ${mapping.ghl_message_id} → ${ghlStatus}:`, err);
+                  });
+                }
+              } else {
+                console.log(`[📊 GHL Status] Sem mapeamento para wamid ${wamid} (status: ${statusName})`);
+              }
             }
           }
         }

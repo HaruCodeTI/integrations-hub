@@ -115,6 +115,21 @@ class DatabaseService {
       );
     `);
 
+    // Tabela de mapeamento wamid ↔ GHL messageId (para status delivered/read)
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS message_mappings (
+        wamid TEXT PRIMARY KEY,
+        ghl_message_id TEXT NOT NULL,
+        location_id TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+    `);
+
+    // Limpa mapeamentos antigos (> 7 dias) para não acumular lixo
+    this.db.exec(`
+      DELETE FROM message_mappings WHERE created_at < datetime('now', '-7 days');
+    `);
+
     console.log('[🗄️  DB] SQLite inicializado com sucesso.');
   }
 
@@ -221,6 +236,30 @@ class DatabaseService {
       'SELECT * FROM ghl_contacts WHERE location_id = ? AND phone_number = ?'
     ).get(locationId, phoneNumber) as GhlContact | null;
   }
+
+  // ─── Message Mappings (wamid ↔ GHL messageId) ───────────
+
+  saveMessageMapping(wamid: string, ghlMessageId: string, locationId: string): void {
+    this.db.prepare(`
+      INSERT OR REPLACE INTO message_mappings (wamid, ghl_message_id, location_id)
+      VALUES (?, ?, ?)
+    `).run(wamid, ghlMessageId, locationId);
+  }
+
+  getMessageMapping(wamid: string): { ghl_message_id: string; location_id: string } | null {
+    return this.db.query(
+      'SELECT ghl_message_id, location_id FROM message_mappings WHERE wamid = ?'
+    ).get(wamid) as { ghl_message_id: string; location_id: string } | null;
+  }
+
+  cleanOldMappings(): number {
+    const result = this.db.prepare(
+      `DELETE FROM message_mappings WHERE created_at < datetime('now', '-7 days')`
+    ).run();
+    return result.changes;
+  }
+
+  // ─── GHL Contacts (mapeamento phone ↔ contactId) ──────────
 
   upsertGhlContact(locationId: string, contactId: string, phoneNumber: string): void {
     this.db.prepare(`

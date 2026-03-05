@@ -237,12 +237,18 @@ export class GhlController {
             console.error(`[❌ GHL → WhatsApp] Erro ao enviar attachment:`, attResult.error);
           } else {
             console.log(`[📎 GHL → WhatsApp] Attachment enviado: ${sendInput.type}`);
+            // Salva mapeamento wamid → GHL messageId para status tracking
+            const waId = attResult.data?.messages?.[0]?.id;
+            if (waId && messageId) {
+              db.saveMessageMapping(waId, messageId, locationId);
+              console.log(`[🔗 Mapping] ${waId} → ${messageId}`);
+            }
           }
         }
       }
 
       // Envia mensagem de texto (se houver texto E não foi usado como caption)
-      let result;
+      let result: any;
       if (messageText && attachments.length === 0) {
         result = await sender.send({
           phone_number_id: client.phone_number_id,
@@ -250,6 +256,15 @@ export class GhlController {
           type: 'text',
           text: { body: messageText },
         });
+
+        // Salva mapeamento wamid → GHL messageId para status tracking
+        if (result.success) {
+          const waId = result.data?.messages?.[0]?.id;
+          if (waId && messageId) {
+            db.saveMessageMapping(waId, messageId, locationId);
+            console.log(`[🔗 Mapping] ${waId} → ${messageId}`);
+          }
+        }
       } else if (messageText && attachments.length > 0) {
         // Texto já foi enviado como caption do attachment
         result = { success: true };
