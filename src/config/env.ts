@@ -14,4 +14,5 @@ export const env = {
   GHL_APP_VERSION_ID: process.env.GHL_APP_VERSION_ID || '',
   GHL_SCOPES: process.env.GHL_SCOPES || 'conversations/message.readonly conversations/message.write contacts.readonly contacts.write',
   GATEWAY_PUBLIC_URL: process.env.GATEWAY_PUBLIC_URL || 'https://gateway.harucode.com.br',
+  ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,
 };
