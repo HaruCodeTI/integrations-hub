@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import { env } from "../config/env";
 import { db } from "../services/db.service";
 import type { Client, ClientType } from "../services/db.service";
@@ -99,7 +100,11 @@ export class AdminController {
     const form = await req.formData();
     const submitted = form.get("password") as string;
 
-    if (submitted !== password) {
+    const submittedBuf = Buffer.from(submitted || "");
+    const passwordBuf = Buffer.from(password);
+    const match = submittedBuf.length === passwordBuf.length &&
+      timingSafeEqual(submittedBuf, passwordBuf);
+    if (!match) {
       return html(adminLoginHTML("Senha incorreta."));
     }
 

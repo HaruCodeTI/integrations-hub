@@ -1,3 +1,12 @@
+function escHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function adminLoginHTML(error?: string): string {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -65,7 +74,7 @@ export function adminLoginHTML(error?: string): string {
   <div class="card">
     <h1>🔐 HaruCode Admin</h1>
     <p>Painel interno de gestão do gateway.</p>
-    ${error ? `<div class="error">${error}</div>` : ""}
+    ${error ? `<div class="error">${escHtml(error)}</div>` : ""}
     <form method="POST" action="/admin/login">
       <label for="password">Senha</label>
       <input type="password" id="password" name="password" autofocus required placeholder="••••••••">
