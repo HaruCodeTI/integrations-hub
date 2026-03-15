@@ -7,6 +7,8 @@ import { termsOfUseHTML } from '../pages/terms';
 import { getScalarHTML } from '../docs/scalar';
 import { openApiSpec } from '../docs/openapi';
 import { mediaService } from '../services/media.service';
+import { AdminController, isAuthenticated } from '../controllers/admin.controller';
+import { env } from '../config/env';
 
 const htmlResponse = (html: string) =>
   new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" }, status: 200 });
@@ -92,6 +94,55 @@ export const appRouter = async (req: Request): Promise<Response> => {
   // POST /integrations/webhook/outbound — Recebe mensagens enviadas via CRM UI
   if (method === "POST" && pathname === "/integrations/webhook/outbound") {
     return await GhlController.handleOutbound(req);
+  }
+
+  // ─── Admin (protegido por senha) ─────────────────────────
+
+  if (pathname.startsWith("/admin")) {
+    // 503 se ADMIN_PASSWORD não configurado
+    if (!env.ADMIN_PASSWORD) {
+      return new Response("Admin não configurado", { status: 503 });
+    }
+
+    // Rotas públicas (sem autenticação)
+    if (method === "GET" && pathname === "/admin/login") {
+      return AdminController.showLogin();
+    }
+    if (method === "POST" && pathname === "/admin/login") {
+      return await AdminController.handleLogin(req);
+    }
+    if (method === "POST" && pathname === "/admin/logout") {
+      return AdminController.handleLogout();
+    }
+
+    // Redireciona /admin para /admin/login se sem sessão
+    if (method === "GET" && pathname === "/admin") {
+      if (!isAuthenticated(req)) return new Response(null, { status: 302, headers: { Location: "/admin/login" } });
+      return AdminController.showDashboard(url);
+    }
+
+    // A partir daqui, sessão obrigatória
+    if (!isAuthenticated(req)) {
+      return new Response(null, { status: 302, headers: { Location: "/admin/login" } });
+    }
+
+    if (method === "POST" && pathname === "/admin/clients") {
+      return await AdminController.createClient(req);
+    }
+
+    // POST /admin/clients/:id/deactivate
+    const deactivateMatch = pathname.match(/^\/admin\/clients\/([^/]+)\/deactivate$/);
+    if (method === "POST" && deactivateMatch) {
+      return AdminController.deactivateClient(deactivateMatch[1]);
+    }
+
+    // POST /admin/clients/:id/reactivate
+    const reactivateMatch = pathname.match(/^\/admin\/clients\/([^/]+)\/reactivate$/);
+    if (method === "POST" && reactivateMatch) {
+      return AdminController.reactivateClient(reactivateMatch[1]);
+    }
+
+    return new Response("Not Found", { status: 404 });
   }
 
   // ─── API Protegida (requer GATEWAY_API_KEY) ──────────────
