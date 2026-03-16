@@ -136,7 +136,7 @@ export function adminDashboardHTML(
         </tr>
       </thead>
       <tbody>
-        ${rows || '<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:32px">Nenhum cliente cadastrado ainda.</td></tr>'}
+        ${rows || '<tr><td colspan="6" style="text-align:center;color:#9ca3af;padding:32px">Nenhum cliente cadastrado ainda.</td></tr>'}
       </tbody>
     </table>
 

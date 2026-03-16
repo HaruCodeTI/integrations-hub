@@ -321,6 +321,7 @@ export class DatabaseService {
       SELECT * FROM clients
       WHERE meta_token_expires_at < datetime('now', ?)
         AND meta_token_expires_at IS NOT NULL
+        AND meta_token IS NOT NULL
         AND meta_token != ''
         AND token_expired = 0
     `).all(`+${thresholdDays} days`) as Client[];
