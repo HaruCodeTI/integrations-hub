@@ -15,6 +15,8 @@ export interface Client {
   active: number;
   created_at: string;
   updated_at: string;
+  meta_token_expires_at: string | null;
+  token_expired: number;
 }
 
 export type CreateClientInput = {
@@ -25,6 +27,9 @@ export type CreateClientInput = {
   meta_token: string;
   client_type?: ClientType;
   ghl_location_id?: string;
+  active?: number;
+  meta_token_expires_at?: string | null;
+  token_expired?: number;
 };
 
 export type UpdateClientInput = Partial<Omit<CreateClientInput, 'phone_number_id'>> & {
@@ -60,11 +65,11 @@ export interface GhlContact {
   created_at: string;
 }
 
-class DatabaseService {
+export class DatabaseService {
   private db: Database;
 
-  constructor() {
-    this.db = new Database('gateway.db');
+  constructor(dbPath: string = 'gateway.db') {
+    this.db = new Database(dbPath);
     this.db.exec('PRAGMA journal_mode = WAL;');
     this.init();
   }
@@ -89,6 +94,18 @@ class DatabaseService {
     // Migração: adiciona colunas novas se não existem (safe para DB existente)
     try { this.db.exec(`ALTER TABLE clients ADD COLUMN client_type TEXT DEFAULT 'webhook'`); } catch {}
     try { this.db.exec(`ALTER TABLE clients ADD COLUMN ghl_location_id TEXT`); } catch {}
+    try { this.db.exec(`ALTER TABLE clients ADD COLUMN meta_token_expires_at TEXT`); } catch {}
+    try { this.db.exec(`ALTER TABLE clients ADD COLUMN token_expired INTEGER DEFAULT 0`); } catch {}
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS signup_tokens (
+        id                 TEXT PRIMARY KEY,
+        created_at         TEXT DEFAULT (datetime('now')),
+        expires_at         TEXT NOT NULL,
+        used_at            TEXT,
+        pending_meta_token TEXT
+      );
+    `);
 
     // Tabela de locations GHL (tokens OAuth por sub-account)
     this.db.exec(`
@@ -156,13 +173,16 @@ class DatabaseService {
   createClient(input: CreateClientInput): Client {
     const id = randomUUID();
     const stmt = this.db.prepare(`
-      INSERT INTO clients (id, name, phone_number_id, webhook_url, auth_token, meta_token, client_type, ghl_location_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO clients
+        (id, name, phone_number_id, webhook_url, auth_token, meta_token,
+         client_type, ghl_location_id, meta_token_expires_at, token_expired)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       id, input.name, input.phone_number_id, input.webhook_url,
       input.auth_token || null, input.meta_token,
-      input.client_type || 'webhook', input.ghl_location_id || null
+      input.client_type || 'webhook', input.ghl_location_id || null,
+      input.meta_token_expires_at || null, input.token_expired ?? 0
     );
     return this.getClientById(id)!;
   }
@@ -267,6 +287,89 @@ class DatabaseService {
       VALUES (?, ?, ?)
       ON CONFLICT(location_id, phone_number) DO UPDATE SET contact_id = ?
     `).run(locationId, contactId, phoneNumber, contactId);
+  }
+
+  // ─── Signup Tokens ─────────────────────────────────────────
+
+  addSignupToken(): string {
+    const id = randomUUID();
+    this.db.prepare(
+      "INSERT INTO signup_tokens (id, expires_at) VALUES (?, datetime('now', '+7 days'))"
+    ).run(id);
+    return id;
+  }
+
+  getSignupToken(id: string): { id: string; pending_meta_token: string | null } | null {
+    return this.db.query(`
+      SELECT id, pending_meta_token FROM signup_tokens
+      WHERE id = ? AND expires_at > datetime('now') AND used_at IS NULL
+    `).get(id) as { id: string; pending_meta_token: string | null } | null;
+  }
+
+  setPendingToken(id: string, payload: string): void {
+    this.db.prepare("UPDATE signup_tokens SET pending_meta_token = ? WHERE id = ?").run(payload, id);
+  }
+
+  markTokenUsed(id: string): void {
+    this.db.prepare("UPDATE signup_tokens SET used_at = datetime('now') WHERE id = ?").run(id);
+  }
+
+  // ─── Token Renewal ─────────────────────────────────────────
+
+  getExpiringTokens(thresholdDays: number): Client[] {
+    return this.db.query(`
+      SELECT * FROM clients
+      WHERE meta_token_expires_at < datetime('now', ?)
+        AND meta_token_expires_at IS NOT NULL
+        AND meta_token != ''
+        AND token_expired = 0
+    `).all(`+${thresholdDays} days`) as Client[];
+  }
+
+  updateClientToken(id: string, newToken: string, newExpiresAt: string): void {
+    this.db.prepare(`
+      UPDATE clients
+      SET meta_token = ?, meta_token_expires_at = ?, token_expired = 0, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(newToken, newExpiresAt, id);
+  }
+
+  setTokenExpired(id: string, value: 0 | 1): void {
+    this.db.prepare(
+      "UPDATE clients SET token_expired = ?, updated_at = datetime('now') WHERE id = ?"
+    ).run(value, id);
+  }
+
+  // ─── Signup: criação de clientes em transação ──────────────
+
+  createClientsFromSignup(
+    inputs: Array<{ phoneId: string; name: string; metaToken: string; metaTokenExpiresAt: string }>
+  ): { created: number; skipped: number } {
+    let created = 0, skipped = 0;
+
+    const run = this.db.transaction(() => {
+      for (const input of inputs) {
+        try {
+          this.createClient({
+            name: input.name,
+            phone_number_id: input.phoneId,
+            webhook_url: "",
+            meta_token: input.metaToken,
+            meta_token_expires_at: input.metaTokenExpiresAt,
+            client_type: "webhook",
+            active: 1,
+            token_expired: 0,
+          });
+          created++;
+        } catch (err: any) {
+          if (err?.message?.includes("UNIQUE")) { skipped++; }
+          else { throw err; }
+        }
+      }
+    });
+
+    run();
+    return { created, skipped };
   }
 }
 
