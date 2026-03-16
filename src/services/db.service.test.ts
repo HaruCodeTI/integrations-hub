@@ -112,4 +112,6 @@ test("createClientsFromSignup pula duplicatas sem abortar", () => {
   ]);
   expect(created).toBe(1);
   expect(skipped).toBe(1);
+  const all = svc.getAllClients();
+  expect(all.some(c => c.phone_number_id === "p2")).toBe(true);
 });
