@@ -25,29 +25,47 @@ Cliente (WhatsApp) → Meta Cloud API → Bun Gateway (VPS) → n8n / Bot / CRM
 ```
 integrations-hub/
 ├── src/
-│   ├── server.ts                  # Entrada principal — Bun.serve()
+│   ├── server.ts                       # Entrada principal — Bun.serve() + cron job
 │   ├── config/
-│   │   └── env.ts                 # Variáveis de ambiente tipadas
+│   │   └── env.ts                      # Variáveis de ambiente tipadas
 │   ├── controllers/
-│   │   └── webhook.controller.ts  # Lógica de verificação e processamento de webhooks
+│   │   ├── admin.controller.ts         # Painel admin (login, clientes, signup links)
+│   │   ├── signup.controller.ts        # Embedded Signup (showSignup, exchangeCode, confirmNumbers)
+│   │   └── webhook.controller.ts       # Recepção e roteamento de webhooks Meta
+│   ├── jobs/
+│   │   └── token-refresh.job.ts        # Cron diário 03:00 — renova meta_tokens
 │   ├── middlewares/
-│   │   └── metaSecurity.ts        # Validação HMAC SHA-256 da assinatura Meta
+│   │   └── metaSecurity.ts             # Validação HMAC SHA-256 da assinatura Meta
 │   ├── pages/
-│   │   ├── privacy.ts             # Página de Política de Privacidade (LGPD)
-│   │   └── terms.ts               # Página de Termos de Uso
+│   │   ├── admin-dashboard.ts          # HTML do painel admin
+│   │   ├── admin-login.ts              # HTML da tela de login
+│   │   ├── signup.ts                   # HTML da página de Embedded Signup
+│   │   ├── signup-success.ts           # HTML da confirmação de signup
+│   │   ├── privacy.ts                  # Política de Privacidade (LGPD)
+│   │   └── terms.ts                    # Termos de Uso
+│   ├── services/
+│   │   ├── db.service.ts               # SQLite — clientes, signup_tokens, métodos de acesso
+│   │   └── meta-oauth.service.ts       # Troca de code, listagem de números, renovação de token
 │   └── routes/
-│       └── router.ts              # Roteamento de todas as requisições
+│       └── router.ts                   # Roteamento de todas as requisições
 ├── docs/
-│   ├── PRD.md                     # Product Requirements Document
-│   └── fluxo.png                  # Diagrama visual do fluxo
-├── .env.example                   # Template de variáveis de ambiente
+│   ├── PRD.md                          # Product Requirements Document
+│   ├── fluxo.png                       # Diagrama visual do fluxo
+│   └── superpowers/
+│       ├── specs/                      # Design specs das features
+│       └── plans/                      # Planos de implementação
+├── .env.example                        # Template de variáveis de ambiente
 ├── package.json
 ├── tsconfig.json
-├── SETUP.md                       # Guia completo de configuração do zero
-└── TROUBLESHOOTING.md             # Problemas comuns e soluções
+├── SETUP.md                            # Guia completo de deploy no DigitalOcean
+├── TESTING.md                          # Guia de testes manuais e automatizados
+├── TROUBLESHOOTING.md                  # Problemas comuns e soluções
+└── next-step.md                        # Situação atual e próximos passos
 ```
 
 ## Rotas Disponíveis
+
+### Públicas
 
 | Método | Rota | Descrição |
 |--------|------|-----------|
@@ -56,6 +74,23 @@ integrations-hub/
 | `POST` | `/webhook` | Recepção de webhooks da Meta |
 | `GET` | `/privacy` | Política de Privacidade (LGPD) |
 | `GET` | `/terms` | Termos de Uso |
+| `GET` | `/signup/:token` | Página de onboarding do cliente (Embedded Signup) |
+| `POST` | `/signup/:token/exchange` | Troca o code Meta por long-lived token |
+| `POST` | `/signup/:token/confirm` | Confirma números e cria clientes |
+| `GET` | `/signup/success` | Página de confirmação pós-onboarding |
+
+### Admin (requer autenticação)
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| `GET` | `/admin` | Dashboard de clientes |
+| `GET` | `/admin/login` | Tela de login |
+| `POST` | `/admin/login` | Autenticação |
+| `POST` | `/admin/logout` | Logout |
+| `POST` | `/admin/clients` | Criar cliente manualmente |
+| `POST` | `/admin/clients/:id/deactivate` | Desativar cliente |
+| `POST` | `/admin/clients/:id/reactivate` | Reativar cliente |
+| `POST` | `/admin/signup-links` | Gerar link de onboarding |
 
 ## Início Rápido
 
@@ -83,16 +118,28 @@ cp .env.example .env
 
 ```env
 PORT=3000
+ADMIN_PASSWORD=sua_senha_admin
+GATEWAY_PUBLIC_URL=https://gateway.harucode.com.br
+
+# Meta / WhatsApp
 META_VERIFY_TOKEN=seu_token_de_verificacao
 META_APP_SECRET=seu_app_secret_do_meta
+META_APP_ID=seu_app_id_publico
+
+# Destino dos webhooks (webhook type clients)
 WEBHOOK_URL_N8N=https://seu-n8n.com/webhook/seu-webhook-id
+
+# GoHighLevel (opcional — apenas para clientes tipo GHL)
+GHL_CLIENT_ID=
+GHL_CLIENT_SECRET=
+GHL_CONVERSATION_PROVIDER_ID=
 ```
 
 Onde encontrar cada valor:
 
-- **META_VERIFY_TOKEN:** Token que você define livremente. Deve ser o mesmo configurado no painel da Meta em WhatsApp → Configuração → Webhook.
-- **META_APP_SECRET:** Meta Developers → Seu App → Configurações → Básico → Chave Secreta do Aplicativo.
-- **WEBHOOK_URL_N8N:** URL de produção do webhook no n8n (use `/webhook/` e não `/webhook-test/`).
+- **META_APP_ID / META_APP_SECRET:** Meta Developers → Seu App → Configurações → Básico
+- **META_VERIFY_TOKEN:** Token que você define livremente. Configure o mesmo no painel da Meta em WhatsApp → Configuração → Webhook.
+- **GATEWAY_PUBLIC_URL:** URL pública do gateway (sem barra no final).
 
 ### Executar
 
@@ -144,6 +191,14 @@ O middleware `metaSecurity.ts` implementa validação HMAC SHA-256 conforme espe
 
 Consulte o [SETUP.md](./SETUP.md) para o guia completo de deploy no DigitalOcean, incluindo configuração de Nginx, SSL, systemd e Meta Developers.
 
+## Testes
+
+```bash
+bun test   # 47 testes automatizados
+```
+
+Consulte o [TESTING.md](./TESTING.md) para o guia completo de testes manuais, incluindo o fluxo de Embedded Signup end-to-end e como testar o job de renovação de tokens.
+
 ## Troubleshooting
 
 Consulte o [TROUBLESHOOTING.md](./TROUBLESHOOTING.md) para soluções dos problemas mais comuns, incluindo erros de webhook, problemas com a Meta API e debugging de fluxos no n8n.
@@ -171,12 +226,19 @@ O fluxo básico no n8n para responder mensagens:
 
 ## Roadmap
 
-- [ ] Captura de status updates (delivery reports, erros)
-- [ ] Multi-tenant com Redis (mapeamento Phone_ID → Bot_URL)
-- [ ] Suporte a mídia (imagens, áudios, documentos)
-- [ ] Fila de mensagens para resiliência
-- [ ] Dashboard de monitoramento
-- [ ] Testes automatizados
+- [x] Gateway core com validação HMAC
+- [x] Multi-tenant — múltiplos clientes por phone_number_id
+- [x] Painel admin completo
+- [x] Integração GHL — Conversation Provider bidirecional
+- [x] Suporte a mídias (imagens, áudios, documentos, stickers)
+- [x] Meta Embedded Signup — onboarding automático de clientes
+- [x] Renovação automática de tokens (cron job diário)
+- [ ] Regeneração manual de token expirado pelo admin
+- [ ] Delivery reports e status updates
+- [ ] Fila de mensagens para resiliência (retry com backoff)
+- [ ] Alertas de token expirado (email/webhook)
+- [ ] Dashboard de monitoramento e métricas
+- [ ] Mensagens interativas (botões, listas, templates)
 
 ## Licença
 
