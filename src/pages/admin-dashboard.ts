@@ -12,7 +12,8 @@ export type FormValues = {
 export function adminDashboardHTML(
   clients: Client[],
   message?: { type: "success" | "error"; text: string },
-  formValues?: FormValues
+  formValues?: FormValues,
+  signupLink?: string
 ): string {
   const fv = formValues || {};
   const isWebhook = fv.client_type === "webhook";
@@ -22,6 +23,10 @@ export function adminDashboardHTML(
       <td><span class="badge badge-${c.client_type}">${c.client_type.toUpperCase()}</span></td>
       <td><code>${escHtml(c.phone_number_id)}</code></td>
       <td><span class="status ${c.active ? 'active' : 'inactive'}">${c.active ? 'ativo' : 'inativo'}</span></td>
+      <td>${c.token_expired
+        ? '<span class="badge badge-expired">Expirado</span>'
+        : (c.meta_token_expires_at ? '<span class="status active">OK</span>' : '<span style="color:#9ca3af">—</span>')
+      }</td>
       <td>
         ${c.active
           ? `<form method="POST" action="/admin/clients/${c.id}/deactivate" style="display:inline">
@@ -61,6 +66,7 @@ export function adminDashboardHTML(
     .badge { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
     .badge-ghl { background: #dbeafe; color: #1d4ed8; }
     .badge-webhook { background: #f3e8ff; color: #7c3aed; }
+    .badge-expired { background: #fee2e2; color: #dc2626; }
     .status { font-size: 13px; font-weight: 600; }
     .status.active { color: #16a34a; }
     .status.inactive { color: #9ca3af; }
@@ -103,10 +109,19 @@ export function adminDashboardHTML(
 
   <main>
     ${message ? `<div class="banner ${message.type}">${escHtml(message.text)}</div>` : ""}
+    ${signupLink ? `<div class="banner success" style="word-break:break-all">
+  <strong>Link gerado (válido por 7 dias):</strong><br>
+  <a href="${escHtml(signupLink)}" target="_blank">${escHtml(signupLink)}</a>
+</div>` : ""}
 
     <div class="section-header">
       <h2>Clientes (${clients.length})</h2>
-      <button class="btn-primary" onclick="toggleForm()">+ Novo Cliente</button>
+      <div style="display:flex;gap:10px">
+        <form method="POST" action="/admin/signup-links" style="display:inline">
+          <button type="submit" class="btn-secondary">🔗 Gerar link de onboarding</button>
+        </form>
+        <button class="btn-primary" onclick="toggleForm()">+ Novo Cliente</button>
+      </div>
     </div>
 
     <table>
@@ -116,6 +131,7 @@ export function adminDashboardHTML(
           <th>Tipo</th>
           <th>Phone Number ID</th>
           <th>Status</th>
+          <th>Token</th>
           <th>Ações</th>
         </tr>
       </thead>

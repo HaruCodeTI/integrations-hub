@@ -148,6 +148,10 @@ export const appRouter = async (req: Request): Promise<Response> => {
       return new Response(null, { status: 302, headers: { Location: "/admin/login" } });
     }
 
+    if (method === "POST" && pathname === "/admin/signup-links") {
+      return AdminController.generateSignupLink();
+    }
+
     if (method === "POST" && pathname === "/admin/clients") {
       return await AdminController.createClient(req);
     }

@@ -126,12 +126,13 @@ export class AdminController {
     const clients = db.getAllClients();
     const successParam = url.searchParams.get("success");
     const errorParam = url.searchParams.get("error");
+    const signupLinkParam = url.searchParams.get("signup_link");
 
     let message: { type: "success" | "error"; text: string } | undefined;
     if (successParam === "1") message = { type: "success", text: "Cliente cadastrado com sucesso!" };
     if (errorParam) message = { type: "error", text: decodeURIComponent(errorParam) };
 
-    return html(adminDashboardHTML(clients, message));
+    return html(adminDashboardHTML(clients, message, undefined, signupLinkParam ?? undefined));
   }
 
   static async createClient(req: Request): Promise<Response> {
@@ -190,5 +191,14 @@ export class AdminController {
       return html(adminDashboardHTML(clients, { type: "error", text: "Cliente não encontrado" }));
     }
     return redirect("/admin");
+  }
+
+  static generateSignupLink(): Response {
+    const tokenId = db.addSignupToken();
+    const url = `${env.GATEWAY_PUBLIC_URL}/signup/${tokenId}`;
+    return new Response(null, {
+      status: 302,
+      headers: { Location: `/admin?signup_link=${encodeURIComponent(url)}` },
+    });
   }
 }
