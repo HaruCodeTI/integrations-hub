@@ -1,4 +1,13 @@
-import { test, expect, mock, beforeEach } from "bun:test";
+import { test, expect, mock, beforeEach, beforeAll, afterAll } from "bun:test";
+
+// Captura referências às funções REAIS antes de qualquer mock.module.
+// Necessário porque: (1) mock.restore() no Bun v1.3.10 não restaura mock.module,
+// e (2) módulo namespace é live binding — lê o mock após beforeAll chamar mock.module.
+import * as _metaOAuthNS from "../services/meta-oauth.service";
+const _realExchangeCode = _metaOAuthNS.exchangeCode;
+const _realListPhoneNumbers = _metaOAuthNS.listPhoneNumbers;
+const _realRenewToken = _metaOAuthNS.renewToken;
+const _RealMetaOAuthError = _metaOAuthNS.MetaOAuthError;
 
 const mockDb = {
   getSignupToken: mock(),
@@ -10,16 +19,30 @@ const mockExchangeCode = mock();
 const mockListPhoneNumbers = mock();
 class MockMetaOAuthError extends Error { constructor(msg: string) { super(msg); this.name = "MetaOAuthError"; } }
 
-mock.module("../services/db.service", () => ({ db: mockDb }));
-mock.module("../services/meta-oauth.service", () => ({
-  exchangeCode: mockExchangeCode, listPhoneNumbers: mockListPhoneNumbers,
-  MetaOAuthError: MockMetaOAuthError,
-}));
-mock.module("../config/env", () => ({
-  env: { META_APP_ID: "app-id", META_APP_SECRET: "secret", GATEWAY_PUBLIC_URL: "https://gw.test" },
-}));
+let SignupController: any;
 
-import { SignupController } from "./signup.controller";
+beforeAll(async () => {
+  mock.module("../services/db.service", () => ({ db: mockDb }));
+  mock.module("../services/meta-oauth.service", () => ({
+    exchangeCode: mockExchangeCode, listPhoneNumbers: mockListPhoneNumbers,
+    MetaOAuthError: MockMetaOAuthError,
+    renewToken: mock(),
+  }));
+  mock.module("../config/env", () => ({
+    env: { META_APP_ID: "app-id", META_APP_SECRET: "secret", GATEWAY_PUBLIC_URL: "https://gw.test" },
+  }));
+  SignupController = (await import("./signup.controller")).SignupController;
+});
+
+afterAll(() => {
+  // Restaura com as referências capturadas ANTES do mock (não lê do namespace live).
+  mock.module("../services/meta-oauth.service", () => ({
+    exchangeCode: _realExchangeCode,
+    listPhoneNumbers: _realListPhoneNumbers,
+    renewToken: _realRenewToken,
+    MetaOAuthError: _RealMetaOAuthError,
+  }));
+});
 
 beforeEach(() => {
   mockDb.getSignupToken.mockReset(); mockDb.setPendingToken.mockReset();
