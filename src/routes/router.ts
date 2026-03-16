@@ -8,6 +8,7 @@ import { getScalarHTML } from '../docs/scalar';
 import { openApiSpec } from '../docs/openapi';
 import { mediaService } from '../services/media.service';
 import { AdminController, isAuthenticated } from '../controllers/admin.controller';
+import { SignupController } from '../controllers/signup.controller';
 import { env } from '../config/env';
 
 const htmlResponse = (html: string) =>
@@ -94,6 +95,27 @@ export const appRouter = async (req: Request): Promise<Response> => {
   // POST /integrations/webhook/outbound — Recebe mensagens enviadas via CRM UI
   if (method === "POST" && pathname === "/integrations/webhook/outbound") {
     return await GhlController.handleOutbound(req);
+  }
+
+  // ─── Signup (público — onboarding via Embedded Signup) ────────
+
+  if (method === "GET" && pathname === "/signup/success") {
+    return SignupController.showSuccess();
+  }
+
+  const signupTokenMatch = pathname.match(/^\/signup\/([^/]+)$/);
+  if (method === "GET" && signupTokenMatch) {
+    return SignupController.showSignup(signupTokenMatch[1]);
+  }
+
+  const signupExchangeMatch = pathname.match(/^\/signup\/([^/]+)\/exchange$/);
+  if (method === "POST" && signupExchangeMatch) {
+    return await SignupController.exchangeCode(req, signupExchangeMatch[1]);
+  }
+
+  const signupConfirmMatch = pathname.match(/^\/signup\/([^/]+)\/confirm$/);
+  if (method === "POST" && signupConfirmMatch) {
+    return await SignupController.confirmNumbers(req, signupConfirmMatch[1]);
   }
 
   // ─── Admin (protegido por senha) ─────────────────────────

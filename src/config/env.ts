@@ -2,6 +2,7 @@ export const env = {
   PORT: process.env.PORT || 3000,
   META_VERIFY_TOKEN: process.env.META_VERIFY_TOKEN || '',
   META_APP_SECRET: process.env.META_APP_SECRET || '',
+  META_APP_ID: process.env.META_APP_ID || '',
   GATEWAY_API_KEY: process.env.GATEWAY_API_KEY || '',
 
   // Legado — será usado como fallback enquanto migra para multi-tenant
