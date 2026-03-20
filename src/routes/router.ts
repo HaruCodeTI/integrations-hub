@@ -201,14 +201,6 @@ export const appRouter = async (req: Request): Promise<Response> => {
     });
   }
 
-  // Painel SPA — redireciona se nao autenticado, senao serve o index.html
-  if (pathname === '/painel' || pathname.startsWith('/painel/')) {
-    if (!isAuthenticated(req)) {
-      return new Response(null, { status: 302, headers: { Location: '/admin/login' } });
-    }
-    return new Response(Bun.file(import.meta.dir + '/../frontend/index.html'));
-  }
-
   // ─── API Protegida (requer GATEWAY_API_KEY) ──────────────
 
   if (pathname.startsWith("/api/")) {
