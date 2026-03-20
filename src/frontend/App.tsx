@@ -8,9 +8,7 @@ import TemplateList from './pages/templates/TemplateList';
 import TemplateForm from './pages/templates/TemplateForm';
 import CampaignList from './pages/campaigns/CampaignList';
 import CampaignDetail from './pages/campaigns/CampaignDetail';
-
-// Placeholder for Task 19
-const CampaignWizard = () => <div className="p-8 text-gray-500">Nova Campanha (plano 4 - tarefa 5)</div>;
+import CampaignWizard from './pages/campaigns/CampaignWizard';
 
 function App() {
   return (
