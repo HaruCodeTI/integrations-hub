@@ -111,7 +111,7 @@ export class AdminController {
     const cookie = setSessionCookie(password);
     return new Response(null, {
       status: 302,
-      headers: { Location: "/admin", "Set-Cookie": cookie },
+      headers: { Location: "/painel", "Set-Cookie": cookie },
     });
   }
 

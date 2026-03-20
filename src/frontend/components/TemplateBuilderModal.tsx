@@ -85,7 +85,7 @@ export default function TemplateBuilderModal({ phoneNumberId, onClose, onSuccess
 
     setLoading(true);
     try {
-      const res = await fetch(`/api/v2/templates?phone_number_id=${phoneNumberId}`, {
+      const res = await fetch(`/api/v2/templates/${phoneNumberId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, category, language, components }),

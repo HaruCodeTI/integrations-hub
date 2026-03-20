@@ -15,7 +15,7 @@ const server = Bun.serve({
     '/painel/*': indexHtml,
   },
   fetch: appRouter,
-  development: process.env.NODE_ENV === 'development' ? { hmr: true } : undefined,
+  development: process.env.NODE_ENV === 'development' ? { hmr: true } : false,
 });
 
 console.log(`Servidor em http://localhost:${server.port}`);
