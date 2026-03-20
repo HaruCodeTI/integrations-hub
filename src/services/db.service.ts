@@ -90,6 +90,16 @@ export interface CreateCampaignInput {
   status?: string;
 }
 
+export interface CampaignJob {
+  id: number;
+  campaign_id: string;
+  contact_id: number;
+  status: 'queued' | 'processing' | 'done' | 'failed';
+  attempts: number;
+  next_attempt_at: string;
+  created_at: string;
+}
+
 // ─── GHL Types ──────────────────────────────────────────────
 
 export interface GhlLocation {
@@ -664,6 +674,69 @@ export class DatabaseService {
         AND cc.sent_at >= date('now')
     `).get(phone_number_id) as { count: number } | null;
     return row?.count ?? 0;
+  }
+
+  // ─── Campaign Jobs ──────────────────────────────────────────
+
+  insertCampaignJobs(campaign_id: string, contact_ids: number[]): void {
+    const stmt = this.db.prepare(
+      `INSERT INTO campaign_jobs (campaign_id, contact_id) VALUES (?, ?)`
+    );
+    const insertAll = this.db.transaction((ids: number[]) => {
+      for (const contact_id of ids) stmt.run(campaign_id, contact_id);
+    });
+    insertAll(contact_ids);
+  }
+
+  getNextJob(campaign_id: string): CampaignJob | null {
+    return this.db.query(`
+      SELECT * FROM campaign_jobs
+      WHERE campaign_id = ? AND status = 'queued' AND next_attempt_at <= datetime('now')
+      ORDER BY next_attempt_at ASC LIMIT 1
+    `).get(campaign_id) as CampaignJob | null;
+  }
+
+  updateJobStatus(job_id: number, status: CampaignJob['status'], attempts?: number, next_attempt_at?: string): void {
+    if (attempts !== undefined && next_attempt_at !== undefined) {
+      this.db.prepare(
+        `UPDATE campaign_jobs SET status = ?, attempts = ?, next_attempt_at = ? WHERE id = ?`
+      ).run(status, attempts, next_attempt_at, job_id);
+    } else {
+      this.db.prepare(`UPDATE campaign_jobs SET status = ? WHERE id = ?`).run(status, job_id);
+    }
+  }
+
+  markJobDone(job_id: number, contact_id: number, wamid: string): void {
+    this.db.transaction(() => {
+      this.db.prepare(`UPDATE campaign_jobs SET status = 'done' WHERE id = ?`).run(job_id);
+      this.db.prepare(`
+        UPDATE campaign_contacts SET wamid = ?, status = 'sent', sent_at = datetime('now') WHERE id = ?
+      `).run(wamid, contact_id);
+    })();
+  }
+
+  markJobFailed(job_id: number, contact_id: number, errorCode?: string, errorMessage?: string): void {
+    this.db.transaction(() => {
+      this.db.prepare(`UPDATE campaign_jobs SET status = 'failed' WHERE id = ?`).run(job_id);
+      this.db.prepare(`
+        UPDATE campaign_contacts SET status = 'failed', error_code = ?, error_message = ? WHERE id = ?
+      `).run(errorCode ?? null, errorMessage ?? null, contact_id);
+    })();
+  }
+
+  countActiveJobs(campaign_id: string): number {
+    const row = this.db.query(`
+      SELECT COUNT(*) as count FROM campaign_jobs
+      WHERE campaign_id = ? AND status IN ('queued', 'processing')
+    `).get(campaign_id) as { count: number } | null;
+    return row?.count ?? 0;
+  }
+
+  cancelJobsForCampaign(campaign_id: string): void {
+    this.db.prepare(`
+      UPDATE campaign_jobs SET status = 'failed'
+      WHERE campaign_id = ? AND status IN ('queued', 'processing')
+    `).run(campaign_id);
   }
 
   // ─── Signup: criação de clientes em transação ──────────────

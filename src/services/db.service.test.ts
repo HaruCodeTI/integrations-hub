@@ -276,6 +276,65 @@ describe('campaigns', () => {
   });
 });
 
+// ─── campaign_jobs ────────────────────────────────────────────
+
+describe('campaign_jobs', () => {
+  let db: DatabaseService;
+  let cId: string;
+  let contactId: number;
+
+  beforeAll(() => {
+    db = new DatabaseService(':memory:');
+  });
+
+  test('setup: cria campanha e contato', () => {
+    const c = db.createCampaign({
+      name: 'Jobs Test', phone_number_id: 'pn-jobs',
+      template_name: 'promo', template_language: 'pt_BR',
+      variable_mapping: {}, total_contacts: 1,
+    });
+    cId = c.id;
+    db.insertCampaignContacts(cId, [{ phone: '5541900000099', variables: {} }]);
+    contactId = db.listCampaignContacts(cId)[0].id;
+  });
+
+  test('insertCampaignJobs cria jobs queued', () => {
+    db.insertCampaignJobs(cId, [contactId]);
+    const job = db.getNextJob(cId);
+    expect(job?.contact_id).toBe(contactId);
+    expect(job?.status).toBe('queued');
+  });
+
+  test('updateJobStatus para processing esconde do getNextJob', () => {
+    const job = db.getNextJob(cId)!;
+    db.updateJobStatus(job.id, 'processing');
+    expect(db.getNextJob(cId)).toBeNull();
+  });
+
+  test('countActiveJobs conta queued + processing', () => {
+    expect(db.countActiveJobs(cId)).toBe(1);
+  });
+
+  test('markJobDone atualiza job e contact', () => {
+    const contacts = db.listCampaignContacts(cId);
+    // precisa de um job processing para marcar done
+    db.insertCampaignJobs(cId, [contacts[0].id]);
+    const job = db.getNextJob(cId)!;
+    db.updateJobStatus(job.id, 'processing');
+    db.markJobDone(job.id, contacts[0].id, 'wamid-done-1');
+    const updated = db.getCampaignContact(contacts[0].id);
+    expect(updated?.wamid).toBe('wamid-done-1');
+    expect(updated?.status).toBe('sent');
+  });
+
+  test('cancelJobsForCampaign cancela queued', () => {
+    const contacts = db.listCampaignContacts(cId);
+    db.insertCampaignJobs(cId, [contacts[0].id]);
+    db.cancelJobsForCampaign(cId);
+    expect(db.getNextJob(cId)).toBeNull();
+  });
+});
+
 // ─── new panel tables ─────────────────────────────────────────
 
 describe('new panel tables', () => {
