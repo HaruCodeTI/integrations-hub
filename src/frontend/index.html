@@ -5,6 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>HaruCode — Painel WhatsApp</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: {
+              DEFAULT: '#4F46E5',
+              light: '#EEF2FF',
+              dark: '#3730A3',
+            },
+            text: {
+              primary: '#111827',
+              secondary: '#6B7280',
+              tertiary: '#9CA3AF',
+            },
+            bg: {
+              white: '#FFFFFF',
+              default: '#F9FAFB',
+            },
+            border: {
+              DEFAULT: '#E5E7EB',
+              strong: '#D1D5DB',
+            },
+          },
+          borderRadius: {
+            md: '8px',
+            lg: '12px',
+            xl: '16px',
+          },
+        },
+      },
+    }
+  </script>
 </head>
 <body class="bg-gray-50 text-gray-900">
   <div id="root"></div>
