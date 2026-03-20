@@ -1,359 +1,397 @@
-import React, { useState } from 'react';
+// src/frontend/pages/campaigns/CampaignWizard.tsx
+import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import AccountSelector from '../../components/AccountSelector';
+import { Upload, ChevronRight, ChevronLeft, AlertTriangle } from 'lucide-react';
+import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
+import { Card } from '../../components/ui/Card';
+import { Badge } from '../../components/ui/Badge';
 
-interface ParseResult {
-  columns: string[];
-  total: number;
-  preview: Array<Record<string, string>>;
+interface Account { name: string; phone_number_id: string; }
+interface Template { name: string; status: string; language: string; components?: any[]; }
+// parse API returns: { columns, total, preview }
+interface ParsedData { columns: string[]; preview: Record<string, string>[]; total: number; }
+
+const STEPS = ['Upload da Lista', 'Canal & Template', 'Confirmar Disparo'];
+
+function StepIndicator({ current }: { current: number }) {
+  return (
+    <div className="flex items-center gap-2 mb-8">
+      {STEPS.map((label, i) => (
+        <React.Fragment key={label}>
+          <div className={`flex items-center gap-2 ${i <= current ? 'text-primary' : 'text-text-tertiary'}`}>
+            <div className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold border-2 ${
+              i < current ? 'bg-primary border-primary text-white' :
+              i === current ? 'border-primary text-primary' :
+              'border-border text-text-tertiary'
+            }`}>
+              {i < current ? '✓' : i + 1}
+            </div>
+            <span className="text-sm font-medium hidden sm:block">{label}</span>
+          </div>
+          {i < STEPS.length - 1 && <div className="flex-1 h-px bg-border mx-1" />}
+        </React.Fragment>
+      ))}
+    </div>
+  );
 }
 
-const LANGUAGES = [
-  { value: 'pt_BR', label: 'Português (Brasil)' },
-  { value: 'en_US', label: 'English (US)' },
-  { value: 'es_ES', label: 'Español (España)' },
-];
+// Step 1: Upload
+function Step1({ campaignName, setCampaignName, parsedData, setParsedData, fileRef, setFileRef, onNext }: any) {
+  const [dragging, setDragging] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-export default function CampaignWizard() {
-  const navigate = useNavigate();
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-
-  // Step 1 state
-  const [phoneId, setPhoneId] = useState('');
-  const [name, setName] = useState('');
-  const [templateName, setTemplateName] = useState('');
-  const [language, setLanguage] = useState('pt_BR');
-  const [delaySeconds, setDelaySeconds] = useState(5);
-  const [scheduledAt, setScheduledAt] = useState('');
-
-  // Step 2 state
-  const [file, setFile] = useState<File | null>(null);
-  const [parseResult, setParseResult] = useState<ParseResult | null>(null);
-  const [parsing, setParsing] = useState(false);
-  const [parseError, setParseError] = useState<string | null>(null);
-  // Variable mapping: index → column name
-  const [mapping, setMapping] = useState<string[]>([]);
-  const [variableCount, setVariableCount] = useState(0);
-
-  // Step 3 state
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-
-  // ─── Step 1 ───────────────────────────────────────────────
-
-  function step1Valid() {
-    return phoneId && name.trim() && templateName.trim() && language;
-  }
-
-  // ─── Step 2 ───────────────────────────────────────────────
-
-  async function handleFileParse() {
-    if (!file) return;
-    setParsing(true);
-    setParseError(null);
-    const formData = new FormData();
-    formData.append('file', file);
+  const parseFile = async (file: File) => {
+    setLoading(true);
+    setError('');
+    const fd = new FormData();
+    fd.append('file', file);
     try {
-      const res = await fetch('/api/v2/campaigns/parse', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok) { setParseError(data.error ?? 'Erro ao processar arquivo'); return; }
-      setParseResult(data);
-      // Initialize mapping with empty strings
-      const vars = variableCount;
-      setMapping(Array(vars).fill(''));
-    } catch {
-      setParseError('Erro de conexão');
+      const res = await fetch('/api/v2/campaigns/parse', { method: 'POST', body: fd });
+      const data = await res.json() as any;
+      if (!res.ok) { setError(data.error ?? 'Erro ao processar arquivo'); return; }
+      if (!data.columns?.includes('telefone')) { setError('O arquivo deve ter uma coluna "telefone"'); return; }
+      setFileRef(file);
+      setParsedData(data);
+    } catch (e: any) {
+      setError(e.message);
     } finally {
-      setParsing(false);
+      setLoading(false);
     }
-  }
+  };
 
-  function step2Valid() {
-    return parseResult !== null && parseResult.total > 0;
-  }
-
-  // ─── Step 3 (Create) ──────────────────────────────────────
-
-  async function createCampaign() {
-    if (!parseResult) return;
-    setCreating(true);
-    setCreateError(null);
-
-    const formData = new FormData();
-    if (file) formData.append('file', file);
-    formData.append('meta', JSON.stringify({
-      name: name.trim(),
-      phone_number_id: phoneId,
-      template_name: templateName.trim(),
-      template_language: language,
-      variable_mapping: mapping,
-      delay_seconds: delaySeconds,
-      scheduled_at: scheduledAt || undefined,
-    }));
-
-    try {
-      const res = await fetch('/api/v2/campaigns', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok) { setCreateError(data.error ?? 'Erro ao criar campanha'); return; }
-      navigate(`/painel/campanhas/${data.id}`);
-    } catch {
-      setCreateError('Erro de conexão');
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  // ─── Render ───────────────────────────────────────────────
+  const onDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) parseFile(file);
+  }, []);
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <button onClick={() => navigate('/painel/campanhas')} className="text-gray-400 hover:text-gray-600">
-          ← Voltar
-        </button>
-        <h1 className="text-xl font-semibold text-gray-900">Nova Campanha</h1>
+    <div className="space-y-4">
+      <Input
+        label="Nome da campanha"
+        value={campaignName}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCampaignName(e.target.value)}
+        placeholder="Ex: Black Friday 2026"
+      />
+
+      <div
+        onDragOver={e => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${dragging ? 'border-primary bg-primary-light' : 'border-border hover:border-primary'}`}
+      >
+        <Upload className="h-8 w-8 mx-auto mb-2 text-text-tertiary" />
+        <p className="text-sm text-text-secondary mb-2">Arraste um arquivo CSV ou XLSX, ou</p>
+        <label className="cursor-pointer text-sm text-primary font-medium hover:underline">
+          escolha um arquivo
+          <input type="file" accept=".csv,.xlsx" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) parseFile(f); }} />
+        </label>
+        <p className="text-xs text-text-tertiary mt-1">Coluna obrigatória: <code>telefone</code></p>
       </div>
 
-      {/* Step indicator */}
-      <div className="flex gap-2 mb-8">
-        {[1, 2, 3].map(s => (
-          <div key={s} className={`flex-1 h-1 rounded-full ${step >= s ? 'bg-blue-600' : 'bg-gray-200'}`} />
-        ))}
+      {loading && <p className="text-sm text-text-secondary">Processando arquivo...</p>}
+      {error && <p className="text-sm text-red-600">{error}</p>}
+
+      {parsedData && (
+        <Card padding="sm">
+          <p className="text-sm font-medium text-text-primary mb-2">
+            {parsedData.total} contatos — Colunas: {parsedData.columns.join(', ')}
+          </p>
+          <div className="overflow-x-auto">
+            <table className="text-xs w-full">
+              <thead>
+                <tr className="border-b border-border">
+                  {parsedData.columns.map((h: string) => <th key={h} className="text-left py-1 pr-3 text-text-secondary font-medium">{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {parsedData.preview.slice(0, 5).map((row: any, i: number) => (
+                  <tr key={i} className="border-b border-border last:border-0">
+                    {parsedData.columns.map((h: string) => <td key={h} className="py-1 pr-3 text-text-primary">{row[h]}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      <div className="flex justify-end">
+        <Button onClick={onNext} disabled={!campaignName || !parsedData}>
+          Próximo <ChevronRight className="h-4 w-4" />
+        </Button>
       </div>
+    </div>
+  );
+}
 
-      {/* ── Step 1 ── */}
-      {step === 1 && (
-        <div className="space-y-4">
-          <h2 className="text-base font-medium text-gray-800">1. Configurações da campanha</h2>
+// Step 2: Canal + Template
+function Step2({ accounts, selectedPhone, setSelectedPhone, templates, loadingTemplates, selectedTemplate, setSelectedTemplate, varMapping, setVarMapping, parsedData, onBack, onNext }: any) {
+  const bodyComponent = selectedTemplate?.components?.find((c: any) => c.type === 'BODY');
+  const variables = bodyComponent?.text?.match(/\{\{(\d+)\}\}/g) ?? [];
 
-          <AccountSelector value={phoneId} onChange={setPhoneId} label="Conta WhatsApp *" />
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nome da campanha *</label>
-            <input
-              type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="Ex: Promoção Dezembro"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nome do template *</label>
-            <input
-              type="text"
-              value={templateName}
-              onChange={e => setTemplateName(e.target.value)}
-              placeholder="Ex: hello_world"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Idioma do template *</label>
-            <select
-              value={language}
-              onChange={e => setLanguage(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-sm font-medium text-text-primary mb-2">Selecionar Canal</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {accounts.map((a: Account) => (
+            <Card
+              key={a.phone_number_id}
+              hover
+              onClick={() => setSelectedPhone(a.phone_number_id)}
+              className={selectedPhone === a.phone_number_id ? 'ring-2 ring-primary' : ''}
             >
-              {LANGUAGES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
-            </select>
-          </div>
+              <p className="font-medium text-text-primary text-sm">{a.name}</p>
+              <p className="text-xs text-text-tertiary">{a.phone_number_id}</p>
+            </Card>
+          ))}
+        </div>
+      </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Número de variáveis do template</label>
-            <input
-              type="number"
-              min={0}
-              max={20}
-              value={variableCount}
-              onChange={e => setVariableCount(parseInt(e.target.value, 10) || 0)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <p className="text-xs text-gray-400 mt-1">Quantidade de variáveis ({`{{1}}`}, {`{{2}}`}, ...) no corpo do template</p>
-          </div>
+      {selectedPhone && (
+        <div>
+          <p className="text-sm font-medium text-text-primary mb-2">Selecionar Template</p>
+          {loadingTemplates ? (
+            <p className="text-sm text-text-secondary">Carregando templates...</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-64 overflow-y-auto">
+              {templates.filter((t: Template) => t.status === 'APPROVED').map((t: Template) => (
+                <Card
+                  key={t.name}
+                  hover
+                  onClick={() => { setSelectedTemplate(t); setVarMapping([]); }}
+                  className={selectedTemplate?.name === t.name ? 'ring-2 ring-primary' : ''}
+                >
+                  <p className="font-medium text-text-primary text-sm">{t.name}</p>
+                  <div className="flex gap-2 mt-1">
+                    <Badge variant="success">Aprovado</Badge>
+                    <span className="text-xs text-text-tertiary">{t.language}</span>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Intervalo entre mensagens (segundos)</label>
-            <input
-              type="number"
-              min={1}
-              max={60}
-              value={delaySeconds}
-              onChange={e => setDelaySeconds(parseInt(e.target.value, 10) || 5)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+      {variables.length > 0 && parsedData && (
+        <div>
+          <p className="text-sm font-medium text-text-primary mb-2">Mapeamento de Variáveis</p>
+          <div className="space-y-2">
+            {variables.map((v: string, i: number) => (
+              <div key={v} className="flex items-center gap-3">
+                <span className="text-sm text-text-secondary w-12 shrink-0">{v}</span>
+                <Select
+                  value={varMapping[i] ?? ''}
+                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                    const m = [...varMapping];
+                    m[i] = e.target.value;
+                    setVarMapping(m);
+                  }}
+                  className="flex-1"
+                >
+                  <option value="">Selecionar coluna...</option>
+                  {parsedData.columns.map((h: string) => <option key={h} value={h}>{h}</option>)}
+                </Select>
+              </div>
+            ))}
           </div>
+        </div>
+      )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Agendamento (opcional)</label>
+      <div className="flex justify-between">
+        <Button variant="ghost" onClick={onBack}><ChevronLeft className="h-4 w-4" /> Voltar</Button>
+        <Button onClick={onNext} disabled={!selectedPhone || !selectedTemplate}>
+          Próximo <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// Step 3: Confirmar
+function Step3({ campaignName, selectedPhone, accounts, selectedTemplate, parsedData, varMapping, fileRef, onBack, onSubmit, loading }: any) {
+  const [scheduledAt, setScheduledAt] = useState('');
+  const [sendNow, setSendNow] = useState(true);
+
+  const account = accounts.find((a: Account) => a.phone_number_id === selectedPhone);
+  const firstRow = parsedData?.preview?.[0] ?? {};
+  const bodyText = selectedTemplate?.components?.find((c: any) => c.type === 'BODY')?.text ?? '';
+  const preview = bodyText.replace(/\{\{(\d+)\}\}/g, (_: string, n: string) => {
+    const idx = parseInt(n) - 1;
+    const col = varMapping[idx];
+    return col ? (firstRow[col] ?? `{{${n}}}`) : `{{${n}}}`;
+  });
+
+  return (
+    <div className="space-y-4">
+      <Card padding="lg">
+        <h3 className="font-medium text-text-primary mb-3">Resumo do Disparo</h3>
+        <dl className="space-y-2 text-sm">
+          <div className="flex justify-between"><dt className="text-text-secondary">Campanha</dt><dd className="font-medium">{campaignName}</dd></div>
+          <div className="flex justify-between"><dt className="text-text-secondary">Contatos</dt><dd className="font-medium">{parsedData?.total}</dd></div>
+          <div className="flex justify-between"><dt className="text-text-secondary">Canal</dt><dd className="font-medium">{account?.name}</dd></div>
+          <div className="flex justify-between"><dt className="text-text-secondary">Template</dt><dd className="font-medium">{selectedTemplate?.name}</dd></div>
+        </dl>
+      </Card>
+
+      <Card>
+        <p className="text-sm font-medium text-text-primary mb-2">Agendamento</p>
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="radio" checked={sendNow} onChange={() => setSendNow(true)} />
+            <span className="text-sm">Enviar agora</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="radio" checked={!sendNow} onChange={() => setSendNow(false)} />
+            <span className="text-sm">Agendar para</span>
+          </label>
+          {!sendNow && (
             <input
               type="datetime-local"
               value={scheduledAt}
               onChange={e => setScheduledAt(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="border border-border rounded-lg px-3 py-2 text-sm w-full"
             />
-          </div>
-
-          <div className="pt-4">
-            <button
-              onClick={() => setStep(2)}
-              disabled={!step1Valid()}
-              className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50 hover:bg-blue-700"
-            >
-              Próximo →
-            </button>
-          </div>
+          )}
         </div>
+      </Card>
+
+      {preview && (
+        <Card>
+          <p className="text-sm font-medium text-text-primary mb-2">Preview (1º contato)</p>
+          <div className="bg-[#ECE5DD] rounded-lg p-3">
+            <div className="bg-white rounded-lg p-3 shadow-sm max-w-[240px] ml-auto">
+              <p className="text-sm text-gray-800 whitespace-pre-wrap">{preview}</p>
+            </div>
+          </div>
+        </Card>
       )}
 
-      {/* ── Step 2 ── */}
+      <div className="flex items-center gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+        <AlertTriangle className="h-4 w-4 text-yellow-600 shrink-0" />
+        <p className="text-xs text-yellow-700">Esta ação é irreversível. Confirme antes de prosseguir.</p>
+      </div>
+
+      <div className="flex justify-between">
+        <Button variant="ghost" onClick={onBack}><ChevronLeft className="h-4 w-4" /> Voltar</Button>
+        <Button onClick={() => onSubmit(sendNow ? null : scheduledAt)} loading={loading}>
+          Confirmar Envio
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export default function CampaignWizard() {
+  const navigate = useNavigate();
+  const [step, setStep] = useState(0);
+  const [campaignName, setCampaignName] = useState('');
+  const [parsedData, setParsedData] = useState<ParsedData | null>(null);
+  const [fileRef, setFileRef] = useState<File | null>(null);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [selectedPhone, setSelectedPhone] = useState('');
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+  // varMapping is an array: index i → column name for {{i+1}}
+  const [varMapping, setVarMapping] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+
+  React.useEffect(() => {
+    fetch('/api/v2/accounts')
+      .then(r => r.json())
+      .then(setAccounts)
+      .catch(console.error);
+  }, []);
+
+  React.useEffect(() => {
+    if (!selectedPhone) return;
+    setLoadingTemplates(true);
+    fetch(`/api/v2/templates?phone_number_id=${selectedPhone}`)
+      .then(r => r.json())
+      .then(setTemplates)
+      .catch(console.error)
+      .finally(() => setLoadingTemplates(false));
+  }, [selectedPhone]);
+
+  // Submit via multipart/form-data: file + meta JSON (controller expects this format)
+  const handleSubmit = async (scheduledAt: string | null) => {
+    if (!fileRef || !selectedTemplate) return;
+    setSubmitting(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', fileRef);
+      formData.append('meta', JSON.stringify({
+        name: campaignName,
+        phone_number_id: selectedPhone,
+        template_name: selectedTemplate.name,
+        template_language: selectedTemplate.language,
+        variable_mapping: varMapping,
+        scheduled_at: scheduledAt ?? undefined,
+      }));
+
+      const res = await fetch('/api/v2/campaigns', { method: 'POST', body: formData });
+      if (!res.ok) { const e = await res.json() as any; alert(e.error ?? 'Erro ao criar campanha'); return; }
+      const data = await res.json() as any;
+      navigate(`/painel/campanhas/${data.id}`);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="p-6 max-w-2xl mx-auto">
+      <h1 className="text-xl font-semibold text-text-primary mb-6">Nova Campanha</h1>
+      <StepIndicator current={step} />
+
+      {step === 0 && (
+        <Step1
+          campaignName={campaignName}
+          setCampaignName={setCampaignName}
+          parsedData={parsedData}
+          setParsedData={setParsedData}
+          fileRef={fileRef}
+          setFileRef={setFileRef}
+          onNext={() => setStep(1)}
+        />
+      )}
+      {step === 1 && (
+        <Step2
+          accounts={accounts}
+          selectedPhone={selectedPhone}
+          setSelectedPhone={setSelectedPhone}
+          templates={templates}
+          loadingTemplates={loadingTemplates}
+          selectedTemplate={selectedTemplate}
+          setSelectedTemplate={setSelectedTemplate}
+          varMapping={varMapping}
+          setVarMapping={setVarMapping}
+          parsedData={parsedData}
+          onBack={() => setStep(0)}
+          onNext={() => setStep(2)}
+        />
+      )}
       {step === 2 && (
-        <div className="space-y-4">
-          <h2 className="text-base font-medium text-gray-800">2. Upload de contatos</h2>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Arquivo CSV ou XLSX *</label>
-            <input
-              type="file"
-              accept=".csv,.xlsx,.xls"
-              onChange={e => { setFile(e.target.files?.[0] ?? null); setParseResult(null); }}
-              className="w-full text-sm text-gray-600"
-            />
-            <p className="text-xs text-gray-400 mt-1">O arquivo deve ter uma coluna "telefone" com o número no formato 5541900000000</p>
-          </div>
-
-          {file && !parseResult && (
-            <button
-              onClick={handleFileParse}
-              disabled={parsing}
-              className="px-4 py-2 bg-gray-800 text-white rounded-lg text-sm disabled:opacity-50"
-            >
-              {parsing ? 'Processando...' : 'Processar arquivo'}
-            </button>
-          )}
-
-          {parseError && <div className="text-red-500 text-sm">{parseError}</div>}
-
-          {parseResult && (
-            <div className="space-y-3">
-              <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-green-700">
-                ✓ {parseResult.total} contatos encontrados
-              </div>
-
-              {/* Variable mapping */}
-              {variableCount > 0 && (
-                <div className="space-y-2">
-                  <div className="text-sm font-medium text-gray-700">Mapeamento de variáveis</div>
-                  {Array.from({ length: variableCount }, (_, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className="text-sm text-gray-500 w-16">{`{{${i + 1}}}`}</span>
-                      <select
-                        value={mapping[i] ?? ''}
-                        onChange={e => {
-                          const m = [...mapping];
-                          m[i] = e.target.value;
-                          setMapping(m);
-                        }}
-                        className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">Selecione uma coluna...</option>
-                        {parseResult.columns.map(col => (
-                          <option key={col} value={col}>{col}</option>
-                        ))}
-                      </select>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Preview */}
-              <div className="text-sm font-medium text-gray-700">Preview (primeiros {parseResult.preview.length})</div>
-              <div className="overflow-auto rounded-lg border border-gray-200">
-                <table className="w-full text-xs">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      {parseResult.columns.map(col => (
-                        <th key={col} className="px-3 py-2 text-left font-medium text-gray-600">{col}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {parseResult.preview.map((row, i) => (
-                      <tr key={i}>
-                        {parseResult.columns.map(col => (
-                          <td key={col} className="px-3 py-2 text-gray-700">{row[col]}</td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          <div className="flex gap-2 pt-4">
-            <button onClick={() => setStep(1)} className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
-              ← Voltar
-            </button>
-            <button
-              onClick={() => setStep(3)}
-              disabled={!step2Valid()}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50 hover:bg-blue-700"
-            >
-              Próximo →
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Step 3 ── */}
-      {step === 3 && (
-        <div className="space-y-4">
-          <h2 className="text-base font-medium text-gray-800">3. Confirmar e criar</h2>
-
-          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-500">Nome:</span>
-              <span className="font-medium">{name}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Template:</span>
-              <span className="font-medium">{templateName} ({language})</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Contatos:</span>
-              <span className="font-medium">{parseResult?.total ?? 0}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Intervalo:</span>
-              <span className="font-medium">{delaySeconds}s entre mensagens</span>
-            </div>
-            {scheduledAt && (
-              <div className="flex justify-between">
-                <span className="text-gray-500">Agendado para:</span>
-                <span className="font-medium">{new Date(scheduledAt).toLocaleString('pt-BR')}</span>
-              </div>
-            )}
-          </div>
-
-          {createError && <div className="text-red-500 text-sm">{createError}</div>}
-
-          <div className="flex gap-2 pt-4">
-            <button onClick={() => setStep(2)} className="px-4 py-2 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
-              ← Voltar
-            </button>
-            <button
-              onClick={createCampaign}
-              disabled={creating}
-              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg text-sm disabled:opacity-50 hover:bg-green-700"
-            >
-              {creating ? 'Criando...' : 'Criar Campanha'}
-            </button>
-          </div>
-        </div>
+        <Step3
+          campaignName={campaignName}
+          selectedPhone={selectedPhone}
+          accounts={accounts}
+          selectedTemplate={selectedTemplate}
+          parsedData={parsedData}
+          varMapping={varMapping}
+          fileRef={fileRef}
+          onBack={() => setStep(1)}
+          onSubmit={handleSubmit}
+          loading={submitting}
+        />
       )}
     </div>
   );
