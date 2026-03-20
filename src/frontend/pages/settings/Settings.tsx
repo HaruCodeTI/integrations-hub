@@ -32,12 +32,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function Field({ label, value, masked }: { label: string; value: string; masked?: boolean }) {
+  const display = masked ? '••••••••' + value.slice(-4) : value;
   return (
     <div>
       <p className="text-xs text-text-secondary mb-1">{label}</p>
       <div className="flex items-center gap-2 bg-bg-default rounded-lg px-3 py-2">
-        <code className="text-sm text-text-primary flex-1 min-w-0 truncate">{value}</code>
+        <code className="text-sm text-text-primary flex-1 min-w-0 truncate">{display}</code>
         <CopyButton text={value} />
       </div>
     </div>
@@ -50,11 +51,7 @@ export default function Settings() {
   useEffect(() => {
     fetch('/api/v2/config')
       .then(r => r.json())
-      .then(data => {
-        if (data && typeof data === 'object' && 'version' in data) {
-          setConfig(data as Config);
-        }
-      })
+      .then(setConfig)
       .catch(console.error);
   }, []);
 
