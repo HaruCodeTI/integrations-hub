@@ -67,11 +67,11 @@ const SESSION_COOKIE = "admin_session";
 
 function setSessionCookie(password: string): string {
   const token = generateSessionToken(password);
-  return `${SESSION_COOKIE}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/admin; Max-Age=${8 * 3600}`;
+  return `${SESSION_COOKIE}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${8 * 3600}`;
 }
 
 function clearSessionCookie(): string {
-  return `${SESSION_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/admin; Max-Age=0`;
+  return `${SESSION_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`;
 }
 
 function getSessionFromRequest(req: Request): string | null {
