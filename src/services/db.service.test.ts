@@ -116,9 +116,86 @@ test("createClientsFromSignup pula duplicatas sem abortar", () => {
   expect(all.some(c => c.phone_number_id === "p2")).toBe(true);
 });
 
-// ─── new panel tables ─────────────────────────────────────────
+// ─── messages ─────────────────────────────────────────────────
 
 import { describe } from "bun:test";
+
+describe('messages', () => {
+  const phoneId = 'test-phone-id';
+  const contact = '5541900000001';
+
+  test('saveMessage salva mensagem inbound', () => {
+    svc.saveMessage({
+      id: 'wamid-test-1',
+      phone_number_id: phoneId,
+      contact_phone: contact,
+      direction: 'inbound',
+      type: 'text',
+      content: { text: { body: 'Ola' } },
+    });
+    const msgs = svc.getMessages(phoneId, contact);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].id).toBe('wamid-test-1');
+  });
+
+  test('saveMessage com OR IGNORE nao duplica', () => {
+    svc.saveMessage({
+      id: 'wamid-test-1',
+      phone_number_id: phoneId,
+      contact_phone: contact,
+      direction: 'inbound',
+      type: 'text',
+      content: { text: { body: 'Ola' } },
+    });
+    svc.saveMessage({
+      id: 'wamid-test-1',
+      phone_number_id: phoneId,
+      contact_phone: contact,
+      direction: 'inbound',
+      type: 'text',
+      content: { text: { body: 'Ola' } },
+    });
+    const msgs = svc.getMessages(phoneId, contact);
+    expect(msgs).toHaveLength(1);
+  });
+
+  test('updateMessageStatus atualiza status', () => {
+    svc.saveMessage({
+      id: 'wamid-test-1',
+      phone_number_id: phoneId,
+      contact_phone: contact,
+      direction: 'inbound',
+      type: 'text',
+      content: { text: { body: 'Ola' } },
+    });
+    svc.updateMessageStatus('wamid-test-1', 'delivered');
+    const msgs = svc.getMessages(phoneId, contact);
+    expect(msgs[0].status).toBe('delivered');
+  });
+
+  test('listConversations agrupa por contato', () => {
+    svc.saveMessage({
+      id: 'wamid-test-1',
+      phone_number_id: phoneId,
+      contact_phone: contact,
+      direction: 'inbound',
+      type: 'text',
+      content: { text: { body: 'Ola' } },
+    });
+    svc.saveMessage({
+      id: 'wamid-test-2',
+      phone_number_id: phoneId,
+      contact_phone: '5541900000002',
+      direction: 'inbound',
+      type: 'text',
+      content: { text: { body: 'Oi' } },
+    });
+    const convs = svc.listConversations(phoneId);
+    expect(convs.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ─── new panel tables ─────────────────────────────────────────
 
 describe('new panel tables', () => {
   test('tabela messages existe', () => {

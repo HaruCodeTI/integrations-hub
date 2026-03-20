@@ -65,6 +65,37 @@ export interface GhlContact {
   created_at: string;
 }
 
+// ─── Messages Types ──────────────────────────────────────────
+
+export interface Message {
+  id: string;
+  phone_number_id: string;
+  contact_phone: string;
+  direction: 'inbound' | 'outbound';
+  type: string;
+  content: string; // JSON string
+  status: string;
+  campaign_id: string | null;
+  created_at: string;
+}
+
+export interface ConversationSummary {
+  contact_phone: string;
+  last_at: string;
+  last_content: string;
+}
+
+export interface SaveMessageInput {
+  id: string;
+  phone_number_id: string;
+  contact_phone: string;
+  direction: 'inbound' | 'outbound';
+  type: string;
+  content: object;
+  status?: string;
+  campaign_id?: string | null;
+}
+
 export class DatabaseService {
   private db: Database;
 
@@ -351,6 +382,48 @@ export class DatabaseService {
       VALUES (?, ?, ?)
       ON CONFLICT(location_id, phone_number) DO UPDATE SET contact_id = ?
     `).run(locationId, contactId, phoneNumber, contactId);
+  }
+
+  // ─── Messages ──────────────────────────────────────────────
+
+  saveMessage(input: SaveMessageInput): void {
+    this.db.prepare(`
+      INSERT OR IGNORE INTO messages
+        (id, phone_number_id, contact_phone, direction, type, content, status, campaign_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      input.id, input.phone_number_id, input.contact_phone, input.direction,
+      input.type, JSON.stringify(input.content), input.status ?? 'sent',
+      input.campaign_id ?? null
+    );
+  }
+
+  updateMessageStatus(wamid: string, status: string): void {
+    this.db.prepare(`UPDATE messages SET status = ? WHERE id = ?`).run(status, wamid);
+  }
+
+  listConversations(phone_number_id: string): ConversationSummary[] {
+    return this.db.query(`
+      SELECT
+        contact_phone,
+        MAX(created_at) as last_at,
+        (SELECT content FROM messages m2
+         WHERE m2.phone_number_id = m1.phone_number_id
+           AND m2.contact_phone = m1.contact_phone
+         ORDER BY created_at DESC LIMIT 1) as last_content
+      FROM messages m1
+      WHERE phone_number_id = ?
+      GROUP BY contact_phone
+      ORDER BY last_at DESC
+    `).all(phone_number_id) as ConversationSummary[];
+  }
+
+  getMessages(phone_number_id: string, contact_phone: string): Message[] {
+    return this.db.query(`
+      SELECT * FROM messages
+      WHERE phone_number_id = ? AND contact_phone = ?
+      ORDER BY created_at ASC
+    `).all(phone_number_id, contact_phone) as Message[];
   }
 
   // ─── Signup Tokens ─────────────────────────────────────────
