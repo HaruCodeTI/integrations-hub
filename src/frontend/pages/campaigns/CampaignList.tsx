@@ -1,93 +1,105 @@
-import React, { useEffect, useState } from 'react';
+// src/frontend/pages/campaigns/CampaignList.tsx
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import AccountSelector from '../../components/AccountSelector';
-import StatusBadge from '../../components/StatusBadge';
+import { Plus, Megaphone } from 'lucide-react';
+import { Card } from '../../components/ui/Card';
+import { Badge } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
 
 interface Campaign {
   id: string;
   name: string;
   status: string;
-  phone_number_id: string;
-  template_name: string;
   total_contacts: number;
   sent_count: number;
   failed_count: number;
   created_at: string;
-  scheduled_at?: string;
+  phone_number_id: string;
 }
 
+const statusVariant: Record<string, 'success' | 'warning' | 'error' | 'default' | 'info'> = {
+  done: 'success', running: 'info', paused: 'warning', cancelled: 'error', pending: 'default',
+};
+const statusLabel: Record<string, string> = {
+  done: 'Concluída', running: 'Em andamento', paused: 'Pausada', cancelled: 'Cancelada', pending: 'Pendente',
+};
+
 export default function CampaignList() {
-  const [phoneId, setPhoneId] = useState('');
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!phoneId) return;
-    setLoading(true);
-    fetch(`/api/v2/campaigns?phone_number_id=${encodeURIComponent(phoneId)}`)
+    fetch('/api/v2/campaigns')
       .then(r => r.json())
-      .then(data => { setCampaigns(Array.isArray(data) ? data : []); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, [phoneId]);
+      .then(data => setCampaigns(Array.isArray(data) ? data : data.campaigns ?? []))
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const total = campaigns.length;
+  const active = campaigns.filter(c => ['running', 'paused', 'pending'].includes(c.status)).length;
+  const done = campaigns.filter(c => c.status === 'done').length;
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-semibold text-gray-900">Campanhas</h1>
-        <button
-          onClick={() => navigate('/painel/campanhas/nova')}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
-        >
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold text-text-primary">Campanhas</h1>
+        <Button onClick={() => navigate('/painel/campanhas/nova')}>
+          <Plus className="h-4 w-4" />
           Nova Campanha
-        </button>
+        </Button>
       </div>
 
-      <div className="mb-4">
-        <AccountSelector value={phoneId} onChange={setPhoneId} label="Conta WhatsApp" />
+      {/* Métricas rápidas */}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: 'Total', value: total },
+          { label: 'Ativas', value: active },
+          { label: 'Concluídas', value: done },
+        ].map(({ label, value }) => (
+          <Card key={label} padding="sm" className="text-center">
+            <p className="text-2xl font-bold text-text-primary">{value}</p>
+            <p className="text-xs text-text-secondary">{label}</p>
+          </Card>
+        ))}
       </div>
 
-      {loading && <div className="text-sm text-gray-400">Carregando...</div>}
+      {loading && <p className="text-sm text-text-secondary">Carregando...</p>}
 
-      {!loading && phoneId && campaigns.length === 0 && (
-        <div className="text-sm text-gray-400">Nenhuma campanha encontrada.</div>
-      )}
-
-      {campaigns.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Nome</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Template</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Progresso</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-600">Criada em</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {campaigns.map(c => (
-                <tr
-                  key={c.id}
-                  onClick={() => navigate(`/painel/campanhas/${c.id}`)}
-                  className="hover:bg-gray-50 cursor-pointer"
-                >
-                  <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
-                  <td className="px-4 py-3 text-gray-500">{c.template_name}</td>
-                  <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {c.sent_count}/{c.total_contacts}
-                    {c.failed_count > 0 && (
-                      <span className="ml-2 text-red-500">({c.failed_count} falhas)</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-gray-400">
+      <div className="space-y-3">
+        {campaigns.map(c => {
+          const sent = c.sent_count ?? 0;
+          const pct = c.total_contacts > 0 ? Math.round((sent / c.total_contacts) * 100) : 0;
+          return (
+            <Card key={c.id} hover onClick={() => navigate(`/painel/campanhas/${c.id}`)}>
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-text-primary text-sm truncate">{c.name}</p>
+                  <p className="text-xs text-text-tertiary mt-0.5">
                     {new Date(c.created_at).toLocaleDateString('pt-BR')}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </p>
+                </div>
+                <Badge variant={statusVariant[c.status] ?? 'default'}>
+                  {statusLabel[c.status] ?? c.status}
+                </Badge>
+              </div>
+              <div className="mt-3 flex items-center gap-3">
+                <div className="flex-1 h-1.5 bg-bg-default rounded-full overflow-hidden">
+                  <div className="h-full bg-primary rounded-full" style={{ width: `${pct}%` }} />
+                </div>
+                <span className="text-xs text-text-tertiary shrink-0">{sent}/{c.total_contacts}</span>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      {!loading && campaigns.length === 0 && (
+        <div className="text-center py-12 text-text-secondary">
+          <Megaphone className="h-10 w-10 mx-auto mb-3 text-text-tertiary" />
+          <p className="font-medium">Nenhuma campanha criada</p>
+          <p className="text-sm mt-1">Clique em "Nova Campanha" para começar</p>
         </div>
       )}
     </div>
