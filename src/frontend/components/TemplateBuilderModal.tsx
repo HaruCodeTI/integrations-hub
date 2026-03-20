@@ -26,15 +26,21 @@ export default function TemplateBuilderModal({ phoneNumberId, onClose, onSuccess
   const [body, setBody] = useState('');
   const [footer, setFooter] = useState('');
   const [buttons, setButtons] = useState<ButtonItem[]>([]);
+  const [varSamples, setVarSamples] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
+  // Variáveis únicas detectadas no corpo, ordenadas numericamente
+  const detectedVars: number[] = [...new Set(
+    (body.match(/\{\{(\d+)\}\}/g) ?? []).map(m => parseInt(m.replace(/\D/g, ''), 10))
+  )].sort((a, b) => a - b);
+
   const insertVariable = () => {
     const el = bodyRef.current;
     if (!el) return;
-    const count = (body.match(/\{\{(\d+)\}\}/g) ?? []).length;
-    const variable = `{{${count + 1}}}`;
+    const next = detectedVars.length > 0 ? Math.max(...detectedVars) + 1 : 1;
+    const variable = `{{${next}}}`;
     const pos = el.selectionStart;
     const newBody = body.slice(0, pos) + variable + body.slice(pos);
     setBody(newBody);
@@ -68,9 +74,21 @@ export default function TemplateBuilderModal({ phoneNumberId, onClose, onSuccess
     setError('');
     if (!name || !body) { setError('Nome e corpo são obrigatórios'); return; }
 
+    if (detectedVars.some(n => !varSamples[n]?.trim())) {
+      setError('Preencha as amostras de todas as variáveis do corpo');
+      return;
+    }
+
     const components: object[] = [];
     if (header) components.push({ type: 'HEADER', format: 'TEXT', text: header });
-    components.push({ type: 'BODY', text: body });
+
+    const bodyComponent: Record<string, unknown> = { type: 'BODY', text: body };
+    if (detectedVars.length > 0) {
+      bodyComponent.example = {
+        body_text: [detectedVars.map(n => varSamples[n]?.trim() ?? '')],
+      };
+    }
+    components.push(bodyComponent);
     if (footer) components.push({ type: 'FOOTER', text: footer });
     if (buttons.length > 0) {
       components.push({
@@ -97,6 +115,7 @@ export default function TemplateBuilderModal({ phoneNumberId, onClose, onSuccess
       }
       onSuccess();
       onClose();
+      // Template enviado com sucesso — a Meta vai analisar e o status aparecerá na lista
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -167,6 +186,26 @@ export default function TemplateBuilderModal({ phoneNumberId, onClose, onSuccess
               />
               <p className="text-xs text-text-tertiary text-right">{body.length}/1024</p>
             </div>
+
+            {/* Amostras de variáveis */}
+            {detectedVars.length > 0 && (
+              <div className="border border-border rounded-lg p-3 space-y-2 bg-bg-default">
+                <p className="text-xs font-semibold text-text-secondary uppercase tracking-wide">Amostras de variáveis</p>
+                <p className="text-xs text-text-tertiary">Inclua exemplos reais para cada variável. A Meta usa esses dados para analisar o modelo.</p>
+                {detectedVars.map(n => (
+                  <div key={n} className="flex items-center gap-2">
+                    <span className="text-xs font-mono bg-white border border-border rounded px-2 py-1 shrink-0 text-text-secondary">{`{{${n}}}`}</span>
+                    <input
+                      type="text"
+                      placeholder={`Texto de exemplo para {{${n}}}`}
+                      value={varSamples[n] ?? ''}
+                      onChange={e => setVarSamples(prev => ({ ...prev, [n]: e.target.value }))}
+                      className="flex-1 border border-border rounded-lg px-3 py-1.5 text-sm text-text-primary placeholder-text-tertiary focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
 
             <Input
               label="Rodapé (opcional)"
