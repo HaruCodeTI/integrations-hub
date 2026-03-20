@@ -33,30 +33,46 @@ export default function AccountList() {
   useEffect(() => { load(); }, []);
 
   const toggleActive = async (id: string, current: number) => {
-    await fetch(`/api/v2/accounts/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ active: current ? 0 : 1 }),
-    });
-    load();
-    setMenuOpen(null);
+    try {
+      const res = await fetch(`/api/v2/accounts/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: current ? 0 : 1 }),
+      });
+      if (!res.ok) throw new Error('Erro ao atualizar conta');
+      load();
+      setMenuOpen(null);
+    } catch (e: any) {
+      alert(e.message);
+    }
   };
 
   const deleteAccount = async (id: string) => {
     if (!confirm('Tem certeza que deseja excluir esta conta?')) return;
-    await fetch(`/api/v2/accounts/${id}`, { method: 'DELETE' });
-    load();
-    setMenuOpen(null);
+    try {
+      const res = await fetch(`/api/v2/accounts/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Erro ao excluir conta');
+      load();
+      setMenuOpen(null);
+    } catch (e: any) {
+      alert(e.message);
+    }
   };
 
   const saveName = async (id: string) => {
-    await fetch(`/api/v2/accounts/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: editName }),
-    });
-    load();
-    setEditingId(null);
+    if (!editName.trim()) { alert('O nome não pode estar vazio'); return; }
+    try {
+      const res = await fetch(`/api/v2/accounts/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editName.trim() }),
+      });
+      if (!res.ok) throw new Error('Erro ao salvar nome');
+      load();
+      setEditingId(null);
+    } catch (e: any) {
+      alert(e.message);
+    }
   };
 
   return (
