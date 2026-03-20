@@ -14,6 +14,7 @@ import { env } from '../config/env';
 import { conversationsRoutes } from '../modules/conversations/conversations.routes';
 import { templatesRoutes } from '../modules/templates/templates.routes';
 import { campaignsRoutes } from '../modules/campaigns/campaigns.routes';
+import { accountsRoutes } from '../modules/accounts/accounts.routes';
 
 const htmlResponse = (html: string) =>
   new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" }, status: 200 });
@@ -183,6 +184,9 @@ export const appRouter = async (req: Request): Promise<Response> => {
       });
     }
 
+    const accountsResult = await accountsRoutes(req, method, pathname);
+    if (accountsResult) return accountsResult;
+
     const conversationsResult = await conversationsRoutes(req, method, pathname);
     if (conversationsResult) return conversationsResult;
 
@@ -191,10 +195,6 @@ export const appRouter = async (req: Request): Promise<Response> => {
 
     const campaignsResult = await campaignsRoutes(req, method, pathname);
     if (campaignsResult) return campaignsResult;
-
-    if (method === 'GET' && pathname === '/api/v2/accounts') {
-      return PanelController.listAccounts();
-    }
 
     return new Response(JSON.stringify({ error: 'Rota v2 nao encontrada' }), {
       status: 404, headers: { 'Content-Type': 'application/json' },
