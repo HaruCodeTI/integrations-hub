@@ -92,18 +92,24 @@ export async function mediaRoutes(
 
     // MIME derivado do objeto File (determinado pelo Bun/browser — não do cliente)
     const mimeType = file.type;
+    if (!mimeType) {
+      return json({ error: 'Tipo de arquivo nao determinado (Content-Type ausente)' }, 400);
+    }
     const mediaType = MIME_TO_TYPE[mimeType];
     if (!mediaType) {
       return json({ error: `Tipo de arquivo nao suportado: ${mimeType}` }, 400);
     }
 
-    if (file.size > SIZE_LIMIT_BYTES[mediaType]) {
+    // Lê os bytes para validar tamanho real (file.size é metadata do cliente — não confiável)
+    const bytes = await file.arrayBuffer();
+    if (bytes.byteLength > SIZE_LIMIT_BYTES[mediaType]) {
       return json({ error: 'Arquivo excede o limite permitido para este tipo' }, 413);
     }
 
     try {
+      const fileBlob = new Blob([bytes], { type: mimeType });
       const metaForm = new FormData();
-      metaForm.append('file', file);
+      metaForm.append('file', fileBlob, file.name);
       metaForm.append('type', mimeType);
       metaForm.append('messaging_product', 'whatsapp');
 
@@ -125,7 +131,7 @@ export async function mediaRoutes(
         media_id: data.id,
         mime_type: mimeType,
         type: mediaType,
-        filename: file.name,
+        filename: file.name.replace(/[^a-zA-Z0-9_\-\.]/g, '_'),
       });
 
     } catch (err: any) {
