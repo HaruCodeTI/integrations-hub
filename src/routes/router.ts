@@ -13,6 +13,7 @@ import { PanelController } from '../controllers/panel.controller';
 import { env } from '../config/env';
 import { conversationsRoutes } from '../modules/conversations/conversations.routes';
 import { templatesRoutes } from '../modules/templates/templates.routes';
+import { campaignsRoutes } from '../modules/campaigns/campaigns.routes';
 
 const htmlResponse = (html: string) =>
   new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" }, status: 200 });
@@ -188,11 +189,13 @@ export const appRouter = async (req: Request): Promise<Response> => {
     const templatesResult = await templatesRoutes(req, method, pathname);
     if (templatesResult) return templatesResult;
 
+    const campaignsResult = await campaignsRoutes(req, method, pathname);
+    if (campaignsResult) return campaignsResult;
+
     if (method === 'GET' && pathname === '/api/v2/accounts') {
       return PanelController.listAccounts();
     }
 
-    // Placeholder — rotas de campaigns adicionadas no plano 4
     return new Response(JSON.stringify({ error: 'Rota v2 nao encontrada' }), {
       status: 404, headers: { 'Content-Type': 'application/json' },
     });
