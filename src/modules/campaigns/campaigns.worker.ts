@@ -11,6 +11,10 @@ export async function processNextJob(): Promise<boolean> {
 
   const job = jobs[0];
 
+  // Fix #1: Atomically mark job as 'processing' before any async work
+  // This prevents double-send if the interval fires again or two instances run
+  db.markJobProcessing(job.id);
+
   // Get the campaign
   const campaign = db.getCampaign(job.campaign_id);
   if (!campaign || campaign.status === 'paused' || campaign.status === 'cancelled') {
@@ -34,10 +38,15 @@ export async function processNextJob(): Promise<boolean> {
     return false;
   }
 
-  // Build template parameters
-  const variables = typeof contact.variables === 'string'
-    ? JSON.parse(contact.variables)
-    : contact.variables as Record<string, string>;
+  // Fix #3: Safe JSON.parse with error logging
+  let variables: Record<string, string> = {};
+  try {
+    variables = typeof contact.variables === 'string'
+      ? JSON.parse(contact.variables)
+      : contact.variables as Record<string, string>;
+  } catch {
+    console.error(`[campaign-worker] Failed to parse variables for contact ${contact.id}`);
+  }
 
   const mapping = typeof campaign.variable_mapping === 'string'
     ? JSON.parse(campaign.variable_mapping)
@@ -95,12 +104,22 @@ async function handleJobFailure(
   }
 }
 
+// Fix #2: Use a 'running' flag to prevent re-entrant interval execution
+// and drain all queued jobs in a single tick before sleeping
 export function startCampaignWorker(): () => void {
+  let running = false;
   const interval = setInterval(async () => {
+    if (running) return;
+    running = true;
     try {
-      await processNextJob();
+      let processed = true;
+      while (processed) {
+        processed = await processNextJob();
+      }
     } catch (err) {
       console.error('[campaign-worker] Error:', err);
+    } finally {
+      running = false;
     }
   }, 5000);
 

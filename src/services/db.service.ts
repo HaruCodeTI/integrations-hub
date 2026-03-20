@@ -715,6 +715,12 @@ export class DatabaseService {
     })();
   }
 
+  markJobProcessing(jobId: number): void {
+    this.db.prepare(
+      `UPDATE campaign_jobs SET status = 'processing' WHERE id = ?`
+    ).run(jobId);
+  }
+
   markJobFailed(job_id: number, contact_id: number, errorCode?: string, errorMessage?: string): void {
     this.db.transaction(() => {
       this.db.prepare(`UPDATE campaign_jobs SET status = 'failed' WHERE id = ?`).run(job_id);
