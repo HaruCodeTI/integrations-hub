@@ -53,6 +53,7 @@ export default function ConversationList() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeTab, setActiveTab] = useState('Todas');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [readSet, setReadSet] = useState<Set<string>>(new Set());
   const navigate = useNavigate();
   const params = useParams();
 
@@ -113,19 +114,29 @@ export default function ConversationList() {
       <div className="w-72 shrink-0 border-r border-border flex flex-col bg-white">
         {/* Tabs */}
         <div className="flex border-b border-border overflow-x-auto">
-          {TABS.map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors ${
-                activeTab === tab
-                  ? 'text-primary border-b-2 border-primary'
-                  : 'text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
+          {TABS.map(tab => {
+            const unreadCount = tab === 'Não lidas'
+              ? conversations.filter(c => c.last_direction === 'inbound' && !readSet.has(c.contact_phone)).length
+              : 0;
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1 ${
+                  activeTab === tab
+                    ? 'text-primary border-b-2 border-primary'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                {tab}
+                {unreadCount > 0 && (
+                  <span className="bg-primary text-white text-[10px] font-semibold rounded-full px-1.5 py-0.5 leading-none">
+                    {unreadCount}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* Lista por conta (accordion) */}
@@ -146,6 +157,7 @@ export default function ConversationList() {
                 {!isCollapsed && convs.map(conv => {
                   const initial = conv.contact_phone.slice(-2);
                   const isSelected = selectedPhone === conv.contact_phone;
+                  const isUnread = conv.last_direction === 'inbound' && !readSet.has(conv.contact_phone) && !isSelected;
                   let lastContent = '';
                   try {
                     const parsed = JSON.parse(conv.last_content);
@@ -155,7 +167,10 @@ export default function ConversationList() {
                   return (
                     <button
                       key={conv.contact_phone}
-                      onClick={() => navigate(`/painel/conversas/${conv.contact_phone}`)}
+                      onClick={() => {
+                        setReadSet(prev => new Set([...prev, conv.contact_phone]));
+                        navigate(`/painel/conversas/${conv.contact_phone}`);
+                      }}
                       className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-bg-default transition-colors ${isSelected ? 'bg-primary-light' : ''}`}
                     >
                       <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-white text-xs font-semibold shrink-0">
@@ -163,12 +178,21 @@ export default function ConversationList() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1">
-                          <p className="text-sm font-medium text-text-primary truncate">{conv.contact_phone}</p>
-                          <span className="text-xs text-text-tertiary shrink-0">
-                            {new Date(conv.last_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
+                          <p className={`text-sm truncate ${isUnread ? 'font-semibold text-text-primary' : 'font-medium text-text-primary'}`}>
+                            {conv.contact_phone}
+                          </p>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="text-xs text-text-tertiary">
+                              {new Date(conv.last_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            {isUnread && (
+                              <span className="h-2 w-2 rounded-full bg-primary shrink-0" />
+                            )}
+                          </div>
                         </div>
-                        <p className="text-xs text-text-secondary truncate">{lastContent}</p>
+                        <p className={`text-xs truncate ${isUnread ? 'text-text-primary font-medium' : 'text-text-secondary'}`}>
+                          {lastContent}
+                        </p>
                       </div>
                     </button>
                   );

@@ -52,25 +52,41 @@ export default function ConversationView({ phoneId, contact }: Props) {
 
   async function sendMessage() {
     if (!text.trim()) return;
+    const body = text.trim();
+    setText('');
+
+    // Optimistic update — aparece imediatamente
+    const tempId = `temp-${Date.now()}`;
+    const tempMsg: Message = {
+      id: tempId,
+      direction: 'outbound',
+      type: 'text',
+      content: JSON.stringify({ text: { body } }),
+      status: 'sent',
+      created_at: new Date().toISOString(),
+    };
+    setMessages(prev => [...prev, tempMsg]);
     setSending(true);
     setError(null);
+
     try {
       const res = await fetch(`/api/v2/conversations/${phoneId}/${encodeURIComponent(contact)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text.trim() }),
+        body: JSON.stringify({ message: body }),
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        setError(body.error ?? 'Erro ao enviar mensagem');
+        const err = await res.json().catch(() => ({})) as any;
+        setError(err.error ?? 'Erro ao enviar mensagem');
+        setMessages(prev => prev.filter(m => m.id !== tempId));
         return;
       }
-      setText('');
-      // Recarrega mensagens
+      // Substitui a mensagem temp pela versão do servidor
       const updated = await fetch(`/api/v2/conversations/${phoneId}/${encodeURIComponent(contact)}`).then(r => r.json());
       setMessages(updated);
     } catch {
-      setError('Erro de conexao');
+      setError('Erro de conexão');
+      setMessages(prev => prev.filter(m => m.id !== tempId));
     } finally {
       setSending(false);
     }
