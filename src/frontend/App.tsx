@@ -3,9 +3,9 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import NotFound from './pages/NotFound';
+import ConversationList from './pages/conversations/ConversationList';
 
-// Placeholders substituidos nos planos 2-4
-const ConversationList = () => <div className="p-8 text-gray-500">Conversas (plano 2)</div>;
+// Placeholders substituidos nos planos 3-4
 const TemplateList = () => <div className="p-8 text-gray-500">Templates (plano 3)</div>;
 const CampaignList = () => <div className="p-8 text-gray-500">Campanhas (plano 4)</div>;
 
