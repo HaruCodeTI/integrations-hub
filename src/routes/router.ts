@@ -9,7 +9,6 @@ import { openApiSpec } from '../docs/openapi';
 import { mediaService } from '../services/media.service';
 import { AdminController, isAuthenticated } from '../controllers/admin.controller';
 import { SignupController } from '../controllers/signup.controller';
-import { PanelController } from '../controllers/panel.controller';
 import { env } from '../config/env';
 import { conversationsRoutes } from '../modules/conversations/conversations.routes';
 import { templatesRoutes } from '../modules/templates/templates.routes';
