@@ -313,9 +313,9 @@ export default function CampaignWizard() {
   React.useEffect(() => {
     if (!selectedPhone) return;
     setLoadingTemplates(true);
-    fetch(`/api/v2/templates?phone_number_id=${selectedPhone}`)
+    fetch(`/api/v2/templates/${selectedPhone}`)
       .then(r => r.json())
-      .then(setTemplates)
+      .then(data => { if (Array.isArray(data)) setTemplates(data); })
       .catch(console.error)
       .finally(() => setLoadingTemplates(false));
   }, [selectedPhone]);
