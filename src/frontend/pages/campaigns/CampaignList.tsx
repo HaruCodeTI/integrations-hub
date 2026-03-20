@@ -11,8 +11,7 @@ interface Campaign {
   name: string;
   status: string;
   total_contacts: number;
-  sent_count: number;
-  failed_count: number;
+  sent_count: number; // enriched by backend from campaign_contacts metrics
   created_at: string;
   phone_number_id: string;
 }

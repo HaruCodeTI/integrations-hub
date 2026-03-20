@@ -12,10 +12,18 @@ interface Campaign {
   name: string;
   status: string;
   total_contacts: number;
-  sent_count: number;
-  failed_count: number;
   template_name: string;
   created_at: string;
+}
+
+interface Metrics {
+  total: number;
+  pending: number;
+  sent: number;
+  delivered: number;
+  read: number;
+  failed: number;
+  cancelled: number;
 }
 
 interface Contact {
@@ -40,6 +48,7 @@ export default function CampaignDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [campaign, setCampaign] = useState<Campaign | null>(null);
+  const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [filterStatus, setFilterStatus] = useState('');
   const [page, setPage] = useState(1);
@@ -54,7 +63,8 @@ export default function CampaignDetail() {
       ]);
       const cData = await cRes.json() as any;
       const ctData = await ctRes.json() as any;
-      setCampaign(cData);
+      setCampaign(cData.campaign ?? cData);
+      setMetrics(cData.metrics ?? null);
       setContacts(Array.isArray(ctData) ? ctData : ctData.contacts ?? []);
     } catch (e) {
       console.error(e);
@@ -119,10 +129,10 @@ export default function CampaignDetail() {
       {/* Metric cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Total', value: campaign.total_contacts, icon: Users, color: 'text-text-secondary' },
-          { label: 'Enviado', value: campaign.sent_count, icon: Send, color: 'text-primary' },
-          { label: 'Falhas', value: campaign.failed_count, icon: CheckCircle2, color: 'text-red-600' },
-          { label: 'Progresso', value: `${campaign.total_contacts > 0 ? Math.round((campaign.sent_count / campaign.total_contacts) * 100) : 0}%`, icon: BookOpen, color: 'text-blue-600' },
+          { label: 'Total', value: metrics?.total ?? campaign.total_contacts, icon: Users, color: 'text-text-secondary' },
+          { label: 'Enviado', value: metrics?.sent ?? 0, icon: Send, color: 'text-primary' },
+          { label: 'Entregue', value: metrics?.delivered ?? 0, icon: CheckCircle2, color: 'text-green-600' },
+          { label: 'Lido', value: metrics?.read ?? 0, icon: BookOpen, color: 'text-blue-600' },
         ].map(({ label, value, icon: Icon, color }) => (
           <Card key={label}>
             <div className="flex items-center gap-3">
