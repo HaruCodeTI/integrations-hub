@@ -1,5 +1,7 @@
 // src/modules/templates/templates.service.ts
 
+import { db } from '../../services/db.service';
+
 const GRAPH_URL = 'https://graph.facebook.com/v21.0';
 
 export interface MetaTemplate {
@@ -35,12 +37,17 @@ async function graphRequest(url: string, token: string, options?: RequestInit): 
 export class TemplatesService {
 
   static async getWabaId(phone_number_id: string, token: string): Promise<string> {
+    // Usa waba_id armazenado no cliente se disponível (System User tokens não conseguem
+    // traversar phone_number_id → whatsapp_business_account via API)
+    const client = db.getClientByPhoneId(phone_number_id);
+    if (client?.waba_id) return client.waba_id;
+
     const data = await graphRequest(
       `${GRAPH_URL}/${phone_number_id}?fields=whatsapp_business_account`,
       token
     );
     const wabaId = data.whatsapp_business_account?.id;
-    if (!wabaId) throw new Error('WABA ID nao encontrado para esse phone_number_id');
+    if (!wabaId) throw new Error('WABA ID nao encontrado. Configure o waba_id no cliente.');
     return wabaId;
   }
 

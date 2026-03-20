@@ -17,6 +17,7 @@ export interface Client {
   updated_at: string;
   meta_token_expires_at: string | null;
   token_expired: number;
+  waba_id: string | null;
 }
 
 export type CreateClientInput = {
@@ -190,6 +191,7 @@ export class DatabaseService {
     try { this.db.exec(`ALTER TABLE clients ADD COLUMN ghl_location_id TEXT`); } catch {}
     try { this.db.exec(`ALTER TABLE clients ADD COLUMN meta_token_expires_at TEXT`); } catch {}
     try { this.db.exec(`ALTER TABLE clients ADD COLUMN token_expired INTEGER DEFAULT 0`); } catch {}
+    try { this.db.exec(`ALTER TABLE clients ADD COLUMN waba_id TEXT`); } catch {}
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS signup_tokens (
