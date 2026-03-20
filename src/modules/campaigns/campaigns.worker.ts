@@ -74,6 +74,7 @@ export async function processNextJob(): Promise<boolean> {
     if (result.success && result.data?.messages?.[0]?.id) {
       const wamid = result.data.messages[0].id as string;
       db.markJobDone(job.id, job.contact_id, wamid);
+      db.checkAndCompleteCampaign(job.campaign_id);
     } else {
       const errMsg = result.error ?? JSON.stringify(result.data) ?? 'Unknown error';
       console.error(`[campaign-worker] Falha ao enviar para ${contact.phone}: ${errMsg}`);

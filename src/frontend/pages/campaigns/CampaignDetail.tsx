@@ -1,7 +1,7 @@
 // src/frontend/pages/campaigns/CampaignDetail.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, CheckCircle2, BookOpen, Users, XCircle } from 'lucide-react';
+import { ArrowLeft, Send, CheckCircle2, BookOpen, Users, XCircle, MessageSquare } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -31,6 +31,7 @@ interface Contact {
   phone: string;
   status: string;
   sent_at: string | null;
+  read_at: string | null;
   error_message: string | null;
 }
 
@@ -42,6 +43,9 @@ const statusLabel: Record<string, string> = {
 };
 const contactStatusVariant: Record<string, 'success' | 'warning' | 'error' | 'default' | 'info'> = {
   sent: 'info', delivered: 'success', read: 'success', failed: 'error', pending: 'default', cancelled: 'default',
+};
+const contactStatusLabel: Record<string, string> = {
+  pending: 'Pendente', sent: 'Enviado', delivered: 'Entregue', read: 'Lido', failed: 'Falhou', cancelled: 'Cancelado',
 };
 
 export default function CampaignDetail() {
@@ -165,18 +169,33 @@ export default function CampaignDetail() {
                 <th className="text-left py-2 pr-4 font-medium">Telefone</th>
                 <th className="text-left py-2 pr-4 font-medium">Status</th>
                 <th className="text-left py-2 pr-4 font-medium">Enviado em</th>
+                <th className="text-left py-2 pr-4 font-medium">Lido em</th>
                 <th className="text-left py-2 font-medium">Erro</th>
               </tr>
             </thead>
             <tbody>
               {filteredContacts.map(c => (
                 <tr key={c.id} className="border-b border-border last:border-0">
-                  <td className="py-2 pr-4 text-text-primary font-mono text-xs">{c.phone}</td>
                   <td className="py-2 pr-4">
-                    <Badge variant={contactStatusVariant[c.status] ?? 'default'}>{c.status}</Badge>
+                    <button
+                      onClick={() => navigate(`/painel/conversas/${c.phone}`)}
+                      className="flex items-center gap-1.5 font-mono text-xs text-primary hover:underline"
+                      title="Abrir conversa"
+                    >
+                      {c.phone}
+                      <MessageSquare className="h-3 w-3 shrink-0" />
+                    </button>
+                  </td>
+                  <td className="py-2 pr-4">
+                    <Badge variant={contactStatusVariant[c.status] ?? 'default'}>
+                      {contactStatusLabel[c.status] ?? c.status}
+                    </Badge>
                   </td>
                   <td className="py-2 pr-4 text-text-tertiary text-xs">
                     {c.sent_at ? new Date(c.sent_at).toLocaleString('pt-BR') : '—'}
+                  </td>
+                  <td className="py-2 pr-4 text-text-tertiary text-xs">
+                    {c.read_at ? new Date(c.read_at).toLocaleString('pt-BR') : '—'}
                   </td>
                   <td className="py-2 text-red-600 text-xs">{c.error_message ?? '—'}</td>
                 </tr>

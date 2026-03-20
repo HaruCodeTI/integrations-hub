@@ -731,6 +731,17 @@ export class DatabaseService {
     })();
   }
 
+  /** Marca campanha como 'done' se não há mais jobs pendentes */
+  checkAndCompleteCampaign(campaign_id: string): void {
+    const remaining = this.db.query(`
+      SELECT COUNT(*) as count FROM campaign_jobs
+      WHERE campaign_id = ? AND status IN ('queued', 'processing')
+    `).get(campaign_id) as { count: number };
+    if (remaining.count === 0) {
+      this.db.prepare(`UPDATE campaigns SET status = 'done' WHERE id = ? AND status = 'running'`).run(campaign_id);
+    }
+  }
+
   markJobProcessing(jobId: number): void {
     this.db.prepare(
       `UPDATE campaign_jobs SET status = 'processing' WHERE id = ?`
