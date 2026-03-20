@@ -1,6 +1,6 @@
 // src/frontend/pages/accounts/AccountList.tsx
 import React, { useState, useEffect } from 'react';
-import { Smartphone, Plus, MoreVertical, Check, X } from 'lucide-react';
+import { Smartphone, Plus, MoreVertical, Check, X, Copy, ExternalLink } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -21,6 +21,37 @@ export default function AccountList() {
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const [signupLink, setSignupLink] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [generatingLink, setGeneratingLink] = useState(false);
+
+  const generateSignupLink = async () => {
+    setGeneratingLink(true);
+    try {
+      const res = await fetch('/admin/signup-links', { method: 'POST', redirect: 'manual' });
+      // A rota redireciona para /admin?signup_link=<url> — extraímos o param da Location
+      const location = res.headers.get('location') ?? '';
+      const match = location.match(/signup_link=([^&]+)/);
+      if (match) {
+        setSignupLink(decodeURIComponent(match[1]));
+      } else {
+        alert('Erro ao gerar link de cadastro');
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setGeneratingLink(false);
+    }
+  };
+
+  const copyLink = async () => {
+    if (!signupLink) return;
+    try {
+      await navigator.clipboard.writeText(signupLink);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch { /* ignore */ }
+  };
 
   const load = () => {
     fetch('/api/v2/accounts')
@@ -79,7 +110,7 @@ export default function AccountList() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-text-primary">Contas</h1>
-        <Button onClick={() => window.open('/signup', '_blank')}>
+        <Button onClick={generateSignupLink} loading={generatingLink}>
           <Plus className="h-4 w-4" />
           Conectar nova conta
         </Button>
@@ -165,6 +196,36 @@ export default function AccountList() {
           );
         })}
       </div>
+
+      {/* Modal: link de cadastro */}
+      {signupLink && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-text-primary">Link de cadastro gerado</h2>
+              <button onClick={() => setSignupLink(null)} className="text-text-tertiary hover:text-text-primary">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="text-sm text-text-secondary">
+              Envie este link para o responsável pela conta Meta que será conectada. O link é de uso único e expira após o cadastro.
+            </p>
+            <div className="flex items-center gap-2 bg-bg-default rounded-lg px-3 py-2">
+              <code className="text-xs text-text-primary flex-1 min-w-0 break-all">{signupLink}</code>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={copyLink} variant="secondary" className="flex-1">
+                {linkCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {linkCopied ? 'Copiado!' : 'Copiar link'}
+              </Button>
+              <Button onClick={() => window.open(signupLink, '_blank')} className="flex-1">
+                <ExternalLink className="h-4 w-4" />
+                Abrir
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!loading && accounts.length === 0 && (
         <div className="text-center py-12 text-text-secondary">
