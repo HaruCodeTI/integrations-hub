@@ -188,7 +188,7 @@ export const appRouter = async (req: Request): Promise<Response> => {
       return PanelController.listAccounts();
     }
 
-    // Placeholders — rotas de conversations, templates, campaigns adicionadas nos planos 2-4
+    // Placeholders — rotas de templates e campaigns adicionadas nos planos 3-4
     return new Response(JSON.stringify({ error: 'Rota v2 nao encontrada' }), {
       status: 404, headers: { 'Content-Type': 'application/json' },
     });

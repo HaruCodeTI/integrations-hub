@@ -3,6 +3,7 @@ import { DatabaseService } from '../../services/db.service';
 
 // Cria DB in-memory próprio para evitar vazamento de mocks de outros arquivos de teste
 // (workaround para bug Bun v1.3.10 onde mock.module não é restaurado entre arquivos)
+// Pode ser revertido ao padrão simples (import { db }) quando Bun corrigir o isolamento de mock.module
 const inMemoryDb = new DatabaseService(':memory:');
 
 let ConversationsService: typeof import('./conversations.service').ConversationsService;
