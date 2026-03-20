@@ -37,6 +37,69 @@ export type UpdateClientInput = Partial<Omit<CreateClientInput, 'phone_number_id
   active?: number;
 };
 
+export interface Campaign {
+  id: string;
+  name: string;
+  phone_number_id: string;
+  template_name: string;
+  template_language: string;
+  variable_mapping: string; // JSON
+  status: 'pending' | 'running' | 'paused' | 'done' | 'cancelled';
+  scheduled_at: string | null;
+  delay_seconds: number;
+  meta_tier: number;
+  total_contacts: number;
+  created_at: string;
+}
+
+export interface CampaignContact {
+  id: number;
+  campaign_id: string;
+  phone: string;
+  variables: string; // JSON
+  status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed' | 'cancelled';
+  wamid: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  sent_at: string | null;
+  delivered_at: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface CampaignMetrics {
+  total: number;
+  pending: number;
+  sent: number;
+  delivered: number;
+  read: number;
+  failed: number;
+  cancelled: number;
+}
+
+export interface CreateCampaignInput {
+  name: string;
+  phone_number_id: string;
+  template_name: string;
+  template_language: string;
+  variable_mapping: object;
+  scheduled_at?: string | null;
+  delay_seconds?: number;
+  meta_tier?: number;
+  total_contacts: number;
+  status?: string;
+}
+
+export interface CampaignJob {
+  id: number;
+  campaign_id: string;
+  contact_id: number;
+  status: 'queued' | 'processing' | 'done' | 'failed';
+  attempts: number;
+  next_attempt_at: string;
+  created_at: string;
+}
+
 // ─── GHL Types ──────────────────────────────────────────────
 
 export interface GhlLocation {
@@ -63,6 +126,37 @@ export interface GhlContact {
   contact_id: string;
   phone_number: string;
   created_at: string;
+}
+
+// ─── Messages Types ──────────────────────────────────────────
+
+export interface Message {
+  id: string;
+  phone_number_id: string;
+  contact_phone: string;
+  direction: 'inbound' | 'outbound';
+  type: string;
+  content: string; // JSON string
+  status: string;
+  campaign_id: string | null;
+  created_at: string;
+}
+
+export interface ConversationSummary {
+  contact_phone: string;
+  last_at: string;
+  last_content: string;
+}
+
+export interface SaveMessageInput {
+  id: string;
+  phone_number_id: string;
+  contact_phone: string;
+  direction: 'inbound' | 'outbound';
+  type: string;
+  content: object;
+  status?: string;
+  campaign_id?: string | null;
 }
 
 export class DatabaseService {
@@ -146,6 +240,70 @@ export class DatabaseService {
     this.db.exec(`
       DELETE FROM message_mappings WHERE created_at < datetime('now', '-7 days');
     `);
+
+    // Painel: mensagens (inbox)
+    this.db.exec(`CREATE TABLE IF NOT EXISTS messages (
+        id TEXT PRIMARY KEY,
+        phone_number_id TEXT NOT NULL,
+        contact_phone TEXT NOT NULL,
+        direction TEXT NOT NULL,
+        type TEXT NOT NULL,
+        content TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'sent',
+        campaign_id TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      )`);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_conversation
+        ON messages(phone_number_id, contact_phone, created_at)`);
+
+    // Painel: campanhas
+    this.db.exec(`CREATE TABLE IF NOT EXISTS campaigns (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        phone_number_id TEXT NOT NULL,
+        template_name TEXT NOT NULL,
+        template_language TEXT NOT NULL,
+        variable_mapping TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        scheduled_at TEXT,
+        delay_seconds INTEGER NOT NULL DEFAULT 3,
+        meta_tier INTEGER NOT NULL DEFAULT 1,
+        total_contacts INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+      )`);
+
+    // Painel: contatos por campanha
+    this.db.exec(`CREATE TABLE IF NOT EXISTS campaign_contacts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        campaign_id TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        variables TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        wamid TEXT,
+        error_code TEXT,
+        error_message TEXT,
+        sent_at TEXT,
+        delivered_at TEXT,
+        read_at TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      )`);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_campaign_contacts_campaign
+        ON campaign_contacts(campaign_id, status)`);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_campaign_contacts_wamid
+        ON campaign_contacts(wamid)`);
+
+    // Painel: fila de jobs de envio
+    this.db.exec(`CREATE TABLE IF NOT EXISTS campaign_jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        campaign_id TEXT NOT NULL,
+        contact_id INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'queued',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TEXT DEFAULT (datetime('now')),
+        created_at TEXT DEFAULT (datetime('now'))
+      )`);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_campaign_jobs_next
+        ON campaign_jobs(status, next_attempt_at)`);
 
     console.log('[🗄️  DB] SQLite inicializado com sucesso.');
   }
@@ -289,6 +447,48 @@ export class DatabaseService {
     `).run(locationId, contactId, phoneNumber, contactId);
   }
 
+  // ─── Messages ──────────────────────────────────────────────
+
+  saveMessage(input: SaveMessageInput): void {
+    this.db.prepare(`
+      INSERT OR IGNORE INTO messages
+        (id, phone_number_id, contact_phone, direction, type, content, status, campaign_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      input.id, input.phone_number_id, input.contact_phone, input.direction,
+      input.type, JSON.stringify(input.content), input.status ?? 'sent',
+      input.campaign_id ?? null
+    );
+  }
+
+  updateMessageStatus(wamid: string, status: string): void {
+    this.db.prepare(`UPDATE messages SET status = ? WHERE id = ?`).run(status, wamid);
+  }
+
+  listConversations(phone_number_id: string): ConversationSummary[] {
+    return this.db.query(`
+      SELECT
+        contact_phone,
+        MAX(created_at) as last_at,
+        (SELECT content FROM messages m2
+         WHERE m2.phone_number_id = m1.phone_number_id
+           AND m2.contact_phone = m1.contact_phone
+         ORDER BY created_at DESC LIMIT 1) as last_content
+      FROM messages m1
+      WHERE phone_number_id = ?
+      GROUP BY contact_phone
+      ORDER BY last_at DESC
+    `).all(phone_number_id) as ConversationSummary[];
+  }
+
+  getMessages(phone_number_id: string, contact_phone: string): Message[] {
+    return this.db.query(`
+      SELECT * FROM messages
+      WHERE phone_number_id = ? AND contact_phone = ?
+      ORDER BY created_at ASC
+    `).all(phone_number_id, contact_phone) as Message[];
+  }
+
   // ─── Signup Tokens ─────────────────────────────────────────
 
   addSignupToken(): string {
@@ -339,6 +539,232 @@ export class DatabaseService {
     this.db.prepare(
       "UPDATE clients SET token_expired = ?, updated_at = datetime('now') WHERE id = ?"
     ).run(value, id);
+  }
+
+  // ─── Campaigns ─────────────────────────────────────────────
+
+  createCampaign(input: CreateCampaignInput): Campaign {
+    const id = randomUUID();
+    const status = input.scheduled_at ? 'pending' : 'running';
+    this.db.prepare(`
+      INSERT INTO campaigns
+        (id, name, phone_number_id, template_name, template_language,
+         variable_mapping, status, scheduled_at, delay_seconds, meta_tier, total_contacts)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, input.name, input.phone_number_id, input.template_name, input.template_language,
+      JSON.stringify(input.variable_mapping), status, input.scheduled_at ?? null,
+      input.delay_seconds ?? 3, input.meta_tier ?? 1, input.total_contacts
+    );
+    return this.getCampaign(id)!;
+  }
+
+  getCampaign(id: string): Campaign | null {
+    return this.db.query(`SELECT * FROM campaigns WHERE id = ?`).get(id) as Campaign | null;
+  }
+
+  listCampaigns(status?: string): Campaign[] {
+    if (status) {
+      return this.db.query(
+        `SELECT * FROM campaigns WHERE status = ? ORDER BY created_at DESC`
+      ).all(status) as Campaign[];
+    }
+    return this.db.query(`SELECT * FROM campaigns ORDER BY created_at DESC`).all() as Campaign[];
+  }
+
+  updateCampaignStatus(id: string, status: Campaign['status']): void {
+    this.db.prepare(`UPDATE campaigns SET status = ? WHERE id = ?`).run(status, id);
+  }
+
+  getRunningCampaigns(): Campaign[] {
+    return this.db.query(`
+      SELECT * FROM campaigns
+      WHERE status = 'running'
+        AND (scheduled_at IS NULL OR scheduled_at <= datetime('now'))
+    `).all() as Campaign[];
+  }
+
+  insertCampaignContacts(campaign_id: string, contacts: Array<{ phone: string; variables: object }>): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO campaign_contacts (campaign_id, phone, variables) VALUES (?, ?, ?)
+    `);
+    const insertAll = this.db.transaction((items: Array<{ phone: string; variables: object }>) => {
+      for (const c of items) {
+        stmt.run(campaign_id, c.phone, JSON.stringify(c.variables));
+      }
+    });
+    insertAll(contacts);
+  }
+
+  listCampaignContacts(campaign_id: string, status?: string, page = 1, perPage = 50): CampaignContact[] {
+    const offset = (page - 1) * perPage;
+    if (status) {
+      return this.db.query(`
+        SELECT * FROM campaign_contacts WHERE campaign_id = ? AND status = ?
+        ORDER BY id ASC LIMIT ? OFFSET ?
+      `).all(campaign_id, status, perPage, offset) as CampaignContact[];
+    }
+    return this.db.query(`
+      SELECT * FROM campaign_contacts WHERE campaign_id = ?
+      ORDER BY id ASC LIMIT ? OFFSET ?
+    `).all(campaign_id, perPage, offset) as CampaignContact[];
+  }
+
+  getCampaignContact(id: number): CampaignContact | null {
+    return this.db.query(`SELECT * FROM campaign_contacts WHERE id = ?`).get(id) as CampaignContact | null;
+  }
+
+  getCampaignMetrics(campaign_id: string): CampaignMetrics {
+    const row = this.db.query(`
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+        SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as sent,
+        SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as delivered,
+        SUM(CASE WHEN status = 'read' THEN 1 ELSE 0 END) as read,
+        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
+        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) as cancelled
+      FROM campaign_contacts WHERE campaign_id = ?
+    `).get(campaign_id) as any;
+    return row ?? { total: 0, pending: 0, sent: 0, delivered: 0, read: 0, failed: 0, cancelled: 0 };
+  }
+
+  setCampaignContactWamid(contact_id: number, wamid: string): void {
+    this.db.prepare(`
+      UPDATE campaign_contacts SET wamid = ?, status = 'sent', sent_at = datetime('now')
+      WHERE id = ?
+    `).run(wamid, contact_id);
+  }
+
+  updateCampaignContactByWamid(
+    wamid: string,
+    status: 'delivered' | 'read' | 'failed',
+    timestamp?: string,
+    errorCode?: string,
+    errorMessage?: string
+  ): void {
+    if (status === 'delivered') {
+      this.db.prepare(
+        `UPDATE campaign_contacts SET status = 'delivered', delivered_at = ? WHERE wamid = ?`
+      ).run(timestamp ?? new Date().toISOString(), wamid);
+    } else if (status === 'read') {
+      this.db.prepare(
+        `UPDATE campaign_contacts SET status = 'read', read_at = ? WHERE wamid = ?`
+      ).run(timestamp ?? new Date().toISOString(), wamid);
+    } else {
+      this.db.prepare(
+        `UPDATE campaign_contacts SET status = 'failed', error_code = ?, error_message = ? WHERE wamid = ?`
+      ).run(errorCode ?? null, errorMessage ?? null, wamid);
+    }
+  }
+
+  cancelCampaignContacts(campaign_id: string): void {
+    this.db.prepare(
+      `UPDATE campaign_contacts SET status = 'cancelled' WHERE campaign_id = ? AND status = 'pending'`
+    ).run(campaign_id);
+  }
+
+  countSentToday(phone_number_id: string): number {
+    const row = this.db.query(`
+      SELECT COUNT(*) as count
+      FROM campaign_contacts cc
+      JOIN campaigns c ON cc.campaign_id = c.id
+      WHERE c.phone_number_id = ?
+        AND cc.status IN ('sent', 'delivered', 'read')
+        AND cc.sent_at >= date('now')
+    `).get(phone_number_id) as { count: number } | null;
+    return row?.count ?? 0;
+  }
+
+  // ─── Campaign Jobs ──────────────────────────────────────────
+
+  insertCampaignJobs(campaign_id: string, contact_ids: number[]): void {
+    const stmt = this.db.prepare(
+      `INSERT INTO campaign_jobs (campaign_id, contact_id) VALUES (?, ?)`
+    );
+    const insertAll = this.db.transaction((ids: number[]) => {
+      for (const contact_id of ids) stmt.run(campaign_id, contact_id);
+    });
+    insertAll(contact_ids);
+  }
+
+  getNextJob(campaign_id: string): CampaignJob | null {
+    return this.db.query(`
+      SELECT * FROM campaign_jobs
+      WHERE campaign_id = ? AND status = 'queued' AND next_attempt_at <= datetime('now')
+      ORDER BY next_attempt_at ASC LIMIT 1
+    `).get(campaign_id) as CampaignJob | null;
+  }
+
+  updateJobStatus(job_id: number, status: CampaignJob['status'], attempts?: number, next_attempt_at?: string): void {
+    if (attempts !== undefined && next_attempt_at !== undefined) {
+      this.db.prepare(
+        `UPDATE campaign_jobs SET status = ?, attempts = ?, next_attempt_at = ? WHERE id = ?`
+      ).run(status, attempts, next_attempt_at, job_id);
+    } else {
+      this.db.prepare(`UPDATE campaign_jobs SET status = ? WHERE id = ?`).run(status, job_id);
+    }
+  }
+
+  markJobDone(job_id: number, contact_id: number, wamid: string): void {
+    this.db.transaction(() => {
+      this.db.prepare(`UPDATE campaign_jobs SET status = 'done' WHERE id = ?`).run(job_id);
+      this.db.prepare(`
+        UPDATE campaign_contacts SET wamid = ?, status = 'sent', sent_at = datetime('now') WHERE id = ?
+      `).run(wamid, contact_id);
+    })();
+  }
+
+  markJobProcessing(jobId: number): void {
+    this.db.prepare(
+      `UPDATE campaign_jobs SET status = 'processing' WHERE id = ?`
+    ).run(jobId);
+  }
+
+  markJobFailed(job_id: number, contact_id: number, errorCode?: string, errorMessage?: string): void {
+    this.db.transaction(() => {
+      this.db.prepare(`UPDATE campaign_jobs SET status = 'failed' WHERE id = ?`).run(job_id);
+      this.db.prepare(`
+        UPDATE campaign_contacts SET status = 'failed', error_code = ?, error_message = ? WHERE id = ?
+      `).run(errorCode ?? null, errorMessage ?? null, contact_id);
+    })();
+  }
+
+  countActiveJobs(campaign_id: string): number {
+    const row = this.db.query(`
+      SELECT COUNT(*) as count FROM campaign_jobs
+      WHERE campaign_id = ? AND status IN ('queued', 'processing')
+    `).get(campaign_id) as { count: number } | null;
+    return row?.count ?? 0;
+  }
+
+  cancelJobsForCampaign(campaign_id: string): void {
+    this.db.prepare(`
+      UPDATE campaign_jobs SET status = 'failed'
+      WHERE campaign_id = ? AND status IN ('queued', 'processing')
+    `).run(campaign_id);
+  }
+
+  getNextQueuedJobs(limit: number): CampaignJob[] {
+    return this.db.query(`
+      SELECT cj.* FROM campaign_jobs cj
+      JOIN campaigns c ON cj.campaign_id = c.id
+      WHERE cj.status = 'queued'
+        AND cj.next_attempt_at <= datetime('now')
+        AND c.status = 'running'
+      ORDER BY cj.next_attempt_at ASC
+      LIMIT ?
+    `).all(limit) as CampaignJob[];
+  }
+
+  requeueJob(job_id: number, delaySeconds: number): void {
+    this.db.prepare(`
+      UPDATE campaign_jobs
+      SET status = 'queued',
+          attempts = attempts + 1,
+          next_attempt_at = datetime('now', ? || ' seconds')
+      WHERE id = ?
+    `).run(String(delaySeconds), job_id);
   }
 
   // ─── Signup: criação de clientes em transação ──────────────

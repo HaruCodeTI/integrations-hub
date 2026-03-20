@@ -49,6 +49,20 @@ export class WebhookController {
           const text = msg.text?.body || mediaInfo?.caption || '';
           const msgType = msg.type || 'text';
 
+          // Salva no inbox para todos os clientes (antes de rotear)
+          try {
+            db.saveMessage({
+              id: waMessageId,
+              phone_number_id: phoneId,
+              contact_phone: from,
+              direction: 'inbound',
+              type: msgType,
+              content: msg,
+            });
+          } catch (saveErr) {
+            console.error('[webhook] Erro ao salvar mensagem no inbox:', saveErr);
+          }
+
           // Resolve o destino via roteamento multi-tenant
           const destination = router.getDestination(phoneId);
 
@@ -99,6 +113,22 @@ export class WebhookController {
           const wamid = status.id;
           const statusName = status.status; // sent, delivered, read, failed
           console.log(`[📊 Status] ${statusName} — msg ${wamid} para ${status.recipient_id}`);
+
+          // Atualiza status no inbox e em campanhas (todos os clientes)
+          try {
+            db.updateMessageStatus(wamid, statusName);
+            if (statusName === 'delivered' || statusName === 'read' || statusName === 'failed') {
+              db.updateCampaignContactByWamid(
+                wamid,
+                statusName as 'delivered' | 'read' | 'failed',
+                status.timestamp ? new Date(Number(status.timestamp) * 1000).toISOString() : undefined,
+                status.errors?.[0]?.code?.toString(),
+                status.errors?.[0]?.title
+              );
+            }
+          } catch (statusErr) {
+            console.error('[webhook] Erro ao atualizar status no inbox/campanhas:', statusErr);
+          }
 
           // Para clientes GHL, busca o mapeamento wamid → GHL messageId
           const phoneId = changes.metadata?.phone_number_id;

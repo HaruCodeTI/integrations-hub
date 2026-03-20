@@ -1,4 +1,4 @@
-import { test, expect, beforeEach } from "bun:test";
+import { test, expect, beforeEach, beforeAll } from "bun:test";
 import { DatabaseService } from "./db.service";
 
 let svc: DatabaseService;
@@ -114,4 +114,255 @@ test("createClientsFromSignup pula duplicatas sem abortar", () => {
   expect(skipped).toBe(1);
   const all = svc.getAllClients();
   expect(all.some(c => c.phone_number_id === "p2")).toBe(true);
+});
+
+// ─── messages ─────────────────────────────────────────────────
+
+import { describe } from "bun:test";
+
+describe('messages', () => {
+  const phoneId = 'test-phone-id';
+  const contact = '5541900000001';
+
+  test('saveMessage salva mensagem inbound', () => {
+    svc.saveMessage({
+      id: 'wamid-test-1',
+      phone_number_id: phoneId,
+      contact_phone: contact,
+      direction: 'inbound',
+      type: 'text',
+      content: { text: { body: 'Ola' } },
+    });
+    const msgs = svc.getMessages(phoneId, contact);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].id).toBe('wamid-test-1');
+  });
+
+  test('saveMessage com OR IGNORE nao duplica', () => {
+    svc.saveMessage({
+      id: 'wamid-test-1',
+      phone_number_id: phoneId,
+      contact_phone: contact,
+      direction: 'inbound',
+      type: 'text',
+      content: { text: { body: 'Ola' } },
+    });
+    svc.saveMessage({
+      id: 'wamid-test-1',
+      phone_number_id: phoneId,
+      contact_phone: contact,
+      direction: 'inbound',
+      type: 'text',
+      content: { text: { body: 'Ola' } },
+    });
+    const msgs = svc.getMessages(phoneId, contact);
+    expect(msgs).toHaveLength(1);
+  });
+
+  test('updateMessageStatus atualiza status', () => {
+    svc.saveMessage({
+      id: 'wamid-test-1',
+      phone_number_id: phoneId,
+      contact_phone: contact,
+      direction: 'inbound',
+      type: 'text',
+      content: { text: { body: 'Ola' } },
+    });
+    svc.updateMessageStatus('wamid-test-1', 'delivered');
+    const msgs = svc.getMessages(phoneId, contact);
+    expect(msgs[0].status).toBe('delivered');
+  });
+
+  test('listConversations agrupa por contato', () => {
+    svc.saveMessage({
+      id: 'wamid-test-1',
+      phone_number_id: phoneId,
+      contact_phone: contact,
+      direction: 'inbound',
+      type: 'text',
+      content: { text: { body: 'Ola' } },
+    });
+    svc.saveMessage({
+      id: 'wamid-test-2',
+      phone_number_id: phoneId,
+      contact_phone: '5541900000002',
+      direction: 'inbound',
+      type: 'text',
+      content: { text: { body: 'Oi' } },
+    });
+    const convs = svc.listConversations(phoneId);
+    expect(convs.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ─── campaigns ────────────────────────────────────────────────
+
+describe('campaigns', () => {
+  let db: DatabaseService;
+  let campaignId: string;
+
+  beforeAll(() => {
+    db = new DatabaseService(':memory:');
+  });
+
+  test('createCampaign status=running quando sem scheduled_at', () => {
+    const c = db.createCampaign({
+      name: 'Teste',
+      phone_number_id: 'phone-test',
+      template_name: 'promo',
+      template_language: 'pt_BR',
+      variable_mapping: { '{{1}}': 'nome' },
+      total_contacts: 2,
+    });
+    expect(c.id).toBeDefined();
+    expect(c.status).toBe('running');
+    campaignId = c.id;
+  });
+
+  test('createCampaign status=pending quando tem scheduled_at', () => {
+    const c = db.createCampaign({
+      name: 'Agendada',
+      phone_number_id: 'phone-test',
+      template_name: 'promo',
+      template_language: 'pt_BR',
+      variable_mapping: {},
+      total_contacts: 0,
+      scheduled_at: '2026-12-31T10:00:00Z',
+    });
+    expect(c.status).toBe('pending');
+  });
+
+  test('getCampaign retorna campanha', () => {
+    const c = db.getCampaign(campaignId);
+    expect(c?.name).toBe('Teste');
+  });
+
+  test('listCampaigns retorna lista', () => {
+    const list = db.listCampaigns();
+    expect(list.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('updateCampaignStatus altera status', () => {
+    db.updateCampaignStatus(campaignId, 'paused');
+    const c = db.getCampaign(campaignId);
+    expect(c?.status).toBe('paused');
+  });
+
+  test('insertCampaignContacts bulk', () => {
+    db.insertCampaignContacts(campaignId, [
+      { phone: '5541900000001', variables: { nome: 'Ana' } },
+      { phone: '5541900000002', variables: { nome: 'Bob' } },
+    ]);
+    const contacts = db.listCampaignContacts(campaignId);
+    expect(contacts.length).toBe(2);
+  });
+
+  test('getCampaignMetrics conta por status', () => {
+    const m = db.getCampaignMetrics(campaignId);
+    expect(m.total).toBe(2);
+    expect(m.pending).toBe(2);
+  });
+
+  test('updateCampaignContactByWamid delivered', () => {
+    const contacts = db.listCampaignContacts(campaignId);
+    db.setCampaignContactWamid(contacts[0].id, 'wamid-camp-1');
+    db.updateCampaignContactByWamid('wamid-camp-1', 'delivered', '2026-03-20T10:00:00Z');
+    const updated = db.listCampaignContacts(campaignId);
+    expect(updated[0].status).toBe('delivered');
+  });
+
+  test('countSentToday retorna 0 para numero sem envios', () => {
+    expect(db.countSentToday('nenhum-numero')).toBe(0);
+  });
+});
+
+// ─── campaign_jobs ────────────────────────────────────────────
+
+describe('campaign_jobs', () => {
+  let db: DatabaseService;
+  let cId: string;
+  let contactId: number;
+
+  beforeAll(() => {
+    db = new DatabaseService(':memory:');
+  });
+
+  test('setup: cria campanha e contato', () => {
+    const c = db.createCampaign({
+      name: 'Jobs Test', phone_number_id: 'pn-jobs',
+      template_name: 'promo', template_language: 'pt_BR',
+      variable_mapping: {}, total_contacts: 1,
+    });
+    cId = c.id;
+    db.insertCampaignContacts(cId, [{ phone: '5541900000099', variables: {} }]);
+    contactId = db.listCampaignContacts(cId)[0].id;
+  });
+
+  test('insertCampaignJobs cria jobs queued', () => {
+    db.insertCampaignJobs(cId, [contactId]);
+    const job = db.getNextJob(cId);
+    expect(job?.contact_id).toBe(contactId);
+    expect(job?.status).toBe('queued');
+  });
+
+  test('updateJobStatus para processing esconde do getNextJob', () => {
+    const job = db.getNextJob(cId)!;
+    db.updateJobStatus(job.id, 'processing');
+    expect(db.getNextJob(cId)).toBeNull();
+  });
+
+  test('countActiveJobs conta queued + processing', () => {
+    expect(db.countActiveJobs(cId)).toBe(1);
+  });
+
+  test('markJobDone atualiza job e contact', () => {
+    const contacts = db.listCampaignContacts(cId);
+    // precisa de um job processing para marcar done
+    db.insertCampaignJobs(cId, [contacts[0].id]);
+    const job = db.getNextJob(cId)!;
+    db.updateJobStatus(job.id, 'processing');
+    db.markJobDone(job.id, contacts[0].id, 'wamid-done-1');
+    const updated = db.getCampaignContact(contacts[0].id);
+    expect(updated?.wamid).toBe('wamid-done-1');
+    expect(updated?.status).toBe('sent');
+  });
+
+  test('cancelJobsForCampaign cancela queued', () => {
+    const contacts = db.listCampaignContacts(cId);
+    db.insertCampaignJobs(cId, [contacts[0].id]);
+    db.cancelJobsForCampaign(cId);
+    expect(db.getNextJob(cId)).toBeNull();
+  });
+});
+
+// ─── new panel tables ─────────────────────────────────────────
+
+describe('new panel tables', () => {
+  test('tabela messages existe', () => {
+    const result = (svc as any)['db'].query(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='messages'`
+    ).get();
+    expect(result).toBeTruthy();
+  });
+
+  test('tabela campaigns existe', () => {
+    const result = (svc as any)['db'].query(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='campaigns'`
+    ).get();
+    expect(result).toBeTruthy();
+  });
+
+  test('tabela campaign_contacts existe', () => {
+    const result = (svc as any)['db'].query(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='campaign_contacts'`
+    ).get();
+    expect(result).toBeTruthy();
+  });
+
+  test('tabela campaign_jobs existe', () => {
+    const result = (svc as any)['db'].query(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='campaign_jobs'`
+    ).get();
+    expect(result).toBeTruthy();
+  });
 });
