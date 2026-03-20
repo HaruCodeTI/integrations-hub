@@ -6,7 +6,11 @@ export class CampaignsController {
   static listCampaigns(url: URL): Response {
     const status = url.searchParams.get('status') ?? undefined;
     const campaigns = db.listCampaigns(status);
-    return Response.json(campaigns);
+    const enriched = campaigns.map(c => ({
+      ...c,
+      sent_count: db.getCampaignMetrics(c.id)?.sent ?? 0,
+    }));
+    return Response.json(enriched);
   }
 
   // POST /api/v2/campaigns — multipart/form-data with file + json fields
@@ -80,7 +84,8 @@ export class CampaignsController {
   static getCampaign(id: string): Response {
     const campaign = db.getCampaign(id);
     if (!campaign) return Response.json({ error: 'Campanha não encontrada' }, { status: 404 });
-    return Response.json(campaign);
+    const metrics = db.getCampaignMetrics(id);
+    return Response.json({ campaign, metrics });
   }
 
   // POST /api/v2/campaigns/:id/pause
