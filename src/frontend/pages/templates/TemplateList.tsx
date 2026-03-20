@@ -1,7 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import AccountSelector from '../../components/AccountSelector';
-import StatusBadge from '../../components/StatusBadge';
+// src/frontend/pages/templates/TemplateList.tsx
+import React, { useState, useEffect } from 'react';
+import { Plus, Trash2 } from 'lucide-react';
+import { Card } from '../../components/ui/Card';
+import { Badge } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
+import TemplateBuilderModal from '../../components/TemplateBuilderModal';
 
 interface Template {
   id?: string;
@@ -9,94 +12,120 @@ interface Template {
   status: string;
   category: string;
   language: string;
-  components?: any[];
+  components?: Array<{ type: string; text?: string }>;
 }
 
-const CATEGORY_ICONS: Record<string, string> = {
-  MARKETING: '📢', UTILITY: '⚙️', AUTHENTICATION: '🔒',
+interface Account { name: string; phone_number_id: string; }
+
+const statusVariant: Record<string, 'success' | 'error' | 'warning' | 'default'> = {
+  APPROVED: 'success', REJECTED: 'error', PENDING: 'warning',
+};
+const statusLabel: Record<string, string> = {
+  APPROVED: 'Aprovado', REJECTED: 'Rejeitado', PENDING: 'Pendente',
 };
 
+function getBodyText(components?: Template['components']): string {
+  return components?.find(c => c.type === 'BODY')?.text ?? '';
+}
+
 export default function TemplateList() {
-  const navigate = useNavigate();
-  const [phoneId, setPhoneId] = useState('');
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [selectedPhone, setSelectedPhone] = useState('');
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(false);
-  const [deleting, setDeleting] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
 
-  function load(pid: string) {
-    if (!pid) return;
-    setLoading(true);
-    fetch(`/api/v2/templates/${pid}`)
+  useEffect(() => {
+    fetch('/api/v2/accounts')
       .then(r => r.json())
-      .then(data => { setTemplates(Array.isArray(data) ? data : []); setLoading(false); })
-      .catch(() => setLoading(false));
-  }
+      .then((data: Account[]) => {
+        setAccounts(data);
+        if (data.length > 0) setSelectedPhone(data[0].phone_number_id);
+      })
+      .catch(console.error);
+  }, []);
 
-  useEffect(() => { load(phoneId); }, [phoneId]);
+  const loadTemplates = () => {
+    if (!selectedPhone) return;
+    setLoading(true);
+    fetch(`/api/v2/templates?phone_number_id=${selectedPhone}`)
+      .then(r => r.json())
+      .then(setTemplates)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  };
 
-  async function handleDelete(name: string) {
+  useEffect(() => { loadTemplates(); }, [selectedPhone]);
+
+  const deleteTemplate = async (name: string) => {
     if (!confirm(`Excluir template "${name}"?`)) return;
-    setDeleting(name);
-    await fetch(`/api/v2/templates/${phoneId}/${encodeURIComponent(name)}`, { method: 'DELETE' });
-    setDeleting(null);
-    load(phoneId);
-  }
-
-  function getBodyPreview(components: any[] = []): string {
-    const body = components.find(c => c.type === 'BODY');
-    return body?.text ?? '';
-  }
+    await fetch(`/api/v2/templates/${name}?phone_number_id=${selectedPhone}`, { method: 'DELETE' });
+    loadTemplates();
+  };
 
   return (
-    <div className="p-6 max-w-4xl">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-semibold">Templates</h1>
-          <p className="text-sm text-gray-500">Gerencie templates de mensagem da Meta API</p>
-        </div>
-        {phoneId && (
-          <button
-            onClick={() => navigate(`/painel/templates/novo?phone=${phoneId}`)}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium"
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <h1 className="text-xl font-semibold text-text-primary">Templates</h1>
+        <div className="flex items-center gap-3">
+          <select
+            value={selectedPhone}
+            onChange={e => setSelectedPhone(e.target.value)}
+            className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary bg-white"
           >
-            + Novo Template
-          </button>
-        )}
+            {accounts.map(a => (
+              <option key={a.phone_number_id} value={a.phone_number_id}>{a.name}</option>
+            ))}
+          </select>
+          <Button onClick={() => setShowModal(true)}>
+            <Plus className="h-4 w-4" />
+            Novo Template
+          </Button>
+        </div>
       </div>
 
-      <div className="mb-4 max-w-xs">
-        <AccountSelector value={phoneId} onChange={setPhoneId} label="Conta" />
-      </div>
+      {loading && <p className="text-sm text-text-secondary">Carregando templates...</p>}
 
-      {loading && <div className="text-sm text-gray-400">Buscando templates...</div>}
-
-      {!loading && templates.length === 0 && phoneId && (
-        <div className="text-sm text-gray-400">Nenhum template encontrado.</div>
-      )}
-
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {templates.map(t => (
-          <div key={t.name} className="bg-white border border-gray-200 rounded-xl p-4 flex items-start justify-between">
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-lg">{CATEGORY_ICONS[t.category] ?? '📋'}</span>
-                <span className="font-medium text-sm">{t.name}</span>
-                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{t.category}</span>
-                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{t.language}</span>
-                <StatusBadge status={t.status} />
+          <Card key={t.name} className="group">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-medium text-text-primary text-sm truncate">{t.name}</p>
+                <p className="text-xs text-text-tertiary">{t.category} · {t.language}</p>
               </div>
-              <p className="text-sm text-gray-500 line-clamp-2">{getBodyPreview(t.components)}</p>
+              <Badge variant={statusVariant[t.status] ?? 'default'}>
+                {statusLabel[t.status] ?? t.status}
+              </Badge>
             </div>
-            <button
-              onClick={() => handleDelete(t.name)}
-              disabled={deleting === t.name}
-              className="ml-4 text-sm text-red-500 hover:text-red-700 disabled:opacity-50"
-            >
-              {deleting === t.name ? '...' : 'Excluir'}
-            </button>
-          </div>
+            {getBodyText(t.components) && (
+              <p className="mt-2 text-xs text-text-secondary line-clamp-3">{getBodyText(t.components)}</p>
+            )}
+            <div className="mt-3 pt-3 border-t border-border flex justify-end opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={() => deleteTemplate(t.name)}
+                className="text-red-500 hover:text-red-600 p-1 rounded"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          </Card>
         ))}
       </div>
+
+      {!loading && templates.length === 0 && (
+        <div className="text-center py-12 text-text-secondary">
+          <p>Nenhum template encontrado para esta conta.</p>
+        </div>
+      )}
+
+      {showModal && selectedPhone && (
+        <TemplateBuilderModal
+          phoneNumberId={selectedPhone}
+          onClose={() => setShowModal(false)}
+          onSuccess={loadTemplates}
+        />
+      )}
     </div>
   );
 }
