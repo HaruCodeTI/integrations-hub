@@ -9,7 +9,9 @@ const json = (data: unknown, status = 200) =>
 
 export class AccountsController {
   static list(): Response {
-    const accounts = AccountsService.list();
+    const accounts = AccountsService.list().map(({ id, name, phone_number_id, client_type, active }) => ({
+      id, name, phone_number_id, client_type, active,
+    }));
     return json(accounts);
   }
 

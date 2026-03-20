@@ -51,7 +51,7 @@ describe('CampaignsController.getCampaign', () => {
     const res = CampaignsController.getCampaign(campaign.id);
     expect(res.status).toBe(200);
     const data = await res.json();
-    expect(data.id).toBe(campaign.id);
+    expect(data.campaign.id).toBe(campaign.id);
   });
 });
 

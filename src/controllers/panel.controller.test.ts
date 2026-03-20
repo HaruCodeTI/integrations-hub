@@ -118,9 +118,9 @@ describe("GET /api/v2/accounts", () => {
   });
 
   test("retorna 200 com array de contas quando autenticado", async () => {
-    mockDb.getActiveClients.mockReturnValue([
-      { id: "c1", name: "Empresa A", phone_number_id: "111", client_type: "webhook" },
-      { id: "c2", name: "Empresa B", phone_number_id: "222", client_type: "ghl" },
+    mockDb.getAllClients.mockReturnValue([
+      { id: "c1", name: "Empresa A", phone_number_id: "111", client_type: "webhook", active: 1 },
+      { id: "c2", name: "Empresa B", phone_number_id: "222", client_type: "ghl", active: 1 },
     ]);
 
     const res = await appRouter(makeAuthRequest("/api/v2/accounts"));
@@ -133,17 +133,19 @@ describe("GET /api/v2/accounts", () => {
       name: "Empresa A",
       phone_number_id: "111",
       client_type: "webhook",
+      active: 1,
     });
     expect(body[1]).toEqual({
       id: "c2",
       name: "Empresa B",
       phone_number_id: "222",
       client_type: "ghl",
+      active: 1,
     });
   });
 
   test("retorna 200 com array vazio quando nao ha clientes ativos", async () => {
-    mockDb.getActiveClients.mockReturnValue([]);
+    mockDb.getAllClients.mockReturnValue([]);
 
     const res = await appRouter(makeAuthRequest("/api/v2/accounts"));
     expect(res.status).toBe(200);
@@ -152,7 +154,7 @@ describe("GET /api/v2/accounts", () => {
   });
 
   test("resposta inclui apenas os campos mapeados (sem meta_token, webhook_url, etc)", async () => {
-    mockDb.getActiveClients.mockReturnValue([
+    mockDb.getAllClients.mockReturnValue([
       {
         id: "c1",
         name: "Empresa A",
