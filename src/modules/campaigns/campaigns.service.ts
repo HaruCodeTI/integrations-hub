@@ -75,11 +75,27 @@ export class CampaignsService {
     return CampaignsService.parseCSV(csv);
   }
 
+  /**
+   * mapping pode ser:
+   *   - string[] antigo: ["colName"] — variáveis posicionais sem parameter_name
+   *   - Record<string,string> novo: {"varName": "colName"} — variáveis nomeadas/posicionais
+   */
   static applyMapping(
     variables: Record<string, string>,
-    mapping: string[]
-  ): Array<{ type: 'text'; text: string }> {
-    return mapping.map(col => ({ type: 'text', text: variables[col] ?? '' }));
+    mapping: string[] | Record<string, string>
+  ): Array<{ type: 'text'; text: string; parameter_name?: string }> {
+    if (Array.isArray(mapping)) {
+      return mapping.map(col => ({ type: 'text', text: variables[col] ?? '' }));
+    }
+    return Object.entries(mapping).map(([varName, col]) => {
+      const param: { type: 'text'; text: string; parameter_name?: string } = {
+        type: 'text',
+        text: variables[col] ?? '',
+      };
+      // parameter_name só é exigido para variáveis nomeadas (não puramente numéricas)
+      if (!/^\d+$/.test(varName)) param.parameter_name = varName;
+      return param;
+    });
   }
 
   static async createCampaign(params: CreateCampaignParams): Promise<Campaign> {

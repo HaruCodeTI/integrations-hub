@@ -48,9 +48,9 @@ export async function processNextJob(): Promise<boolean> {
     console.error(`[campaign-worker] Failed to parse variables for contact ${contact.id}`);
   }
 
-  const mapping = typeof campaign.variable_mapping === 'string'
+  const mapping: string[] | Record<string, string> = typeof campaign.variable_mapping === 'string'
     ? JSON.parse(campaign.variable_mapping)
-    : campaign.variable_mapping as string[];
+    : campaign.variable_mapping;
 
   const parameters = CampaignsService.applyMapping(variables, mapping);
 

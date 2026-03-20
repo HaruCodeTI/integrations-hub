@@ -165,7 +165,7 @@ function Step2({ accounts, selectedPhone, setSelectedPhone, templates, loadingTe
                 <Card
                   key={t.name}
                   hover
-                  onClick={() => { setSelectedTemplate(t); setVarMapping([]); }}
+                  onClick={() => { setSelectedTemplate(t); setVarMapping({}); }}
                   className={selectedTemplate?.name === t.name ? 'ring-2 ring-primary' : ''}
                 >
                   <p className="font-medium text-text-primary text-sm">{t.name}</p>
@@ -184,23 +184,24 @@ function Step2({ accounts, selectedPhone, setSelectedPhone, templates, loadingTe
         <div>
           <p className="text-sm font-medium text-text-primary mb-2">Mapeamento de Variáveis</p>
           <div className="space-y-2">
-            {variables.map((v: string, i: number) => (
-              <div key={v} className="flex items-center gap-3">
-                <span className="text-sm text-text-secondary w-12 shrink-0">{v}</span>
-                <Select
-                  value={varMapping[i] ?? ''}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-                    const m = [...varMapping];
-                    m[i] = e.target.value;
-                    setVarMapping(m);
-                  }}
-                  className="flex-1"
-                >
-                  <option value="">Selecionar coluna...</option>
-                  {parsedData.columns.map((h: string) => <option key={h} value={h}>{h}</option>)}
-                </Select>
-              </div>
-            ))}
+            {variables.map((v: string) => {
+              const varName = v.slice(2, -2); // "{{nome}}" → "nome"
+              return (
+                <div key={v} className="flex items-center gap-3">
+                  <span className="text-sm font-mono text-text-secondary shrink-0">{v}</span>
+                  <Select
+                    value={varMapping[varName] ?? ''}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                      setVarMapping(prev => ({ ...prev, [varName]: e.target.value }));
+                    }}
+                    className="flex-1"
+                  >
+                    <option value="">Selecionar coluna...</option>
+                    {parsedData.columns.map((h: string) => <option key={h} value={h}>{h}</option>)}
+                  </Select>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -223,11 +224,9 @@ function Step3({ campaignName, selectedPhone, accounts, selectedTemplate, parsed
   const account = accounts.find((a: Account) => a.phone_number_id === selectedPhone);
   const firstRow = parsedData?.preview?.[0] ?? {};
   const bodyText = selectedTemplate?.components?.find((c: any) => c.type === 'BODY')?.text ?? '';
-  const allVars: string[] = [...new Set<string>(bodyText.match(/\{\{([a-zA-Z0-9_]+)\}\}/g) ?? [])];
-  const preview = bodyText.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (match: string) => {
-    const idx = allVars.indexOf(match);
-    const col = varMapping[idx];
-    return col ? (firstRow[col] ?? match) : match;
+  const preview = bodyText.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (_: string, varName: string) => {
+    const col = varMapping[varName];
+    return col ? (firstRow[col] ?? `{{${varName}}}`) : `{{${varName}}}`;
   });
 
   return (
@@ -301,8 +300,8 @@ export default function CampaignWizard() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
-  // varMapping is an array: index i → column name for {{i+1}}
-  const [varMapping, setVarMapping] = useState<string[]>([]);
+  // varMapping: { varName → csvColumn } — ex: { "nome": "nome" }
+  const [varMapping, setVarMapping] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
   React.useEffect(() => {
