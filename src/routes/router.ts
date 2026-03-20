@@ -206,7 +206,7 @@ export const appRouter = async (req: Request): Promise<Response> => {
     if (!isAuthenticated(req)) {
       return new Response(null, { status: 302, headers: { Location: '/admin/login' } });
     }
-    return new Response(Bun.file('src/frontend/index.html'));
+    return new Response(Bun.file(import.meta.dir + '/../frontend/index.html'));
   }
 
   // ─── API Protegida (requer GATEWAY_API_KEY) ──────────────
