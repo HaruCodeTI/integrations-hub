@@ -1,7 +1,7 @@
 // src/frontend/pages/campaigns/CampaignDetail.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Send, CheckCircle2, BookOpen, Users } from 'lucide-react';
+import { ArrowLeft, Send, CheckCircle2, BookOpen, Users, XCircle } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -124,12 +124,13 @@ export default function CampaignDetail() {
       </div>
 
       {/* Metric cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {[
           { label: 'Total', value: metrics?.total ?? campaign.total_contacts, icon: Users, color: 'text-text-secondary' },
           { label: 'Enviado', value: metrics?.sent ?? 0, icon: Send, color: 'text-primary' },
           { label: 'Entregue', value: metrics?.delivered ?? 0, icon: CheckCircle2, color: 'text-green-600' },
           { label: 'Lido', value: metrics?.read ?? 0, icon: BookOpen, color: 'text-blue-600' },
+          { label: 'Falhas', value: metrics?.failed ?? 0, icon: XCircle, color: 'text-red-500' },
         ].map(({ label, value, icon: Icon, color }) => (
           <Card key={label}>
             <div className="flex items-center gap-3">

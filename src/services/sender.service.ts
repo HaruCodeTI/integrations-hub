@@ -65,6 +65,7 @@ class SenderService {
 
     try {
       const url = `${META_API_BASE}/${phone_number_id}/messages`;
+      console.log(`[Sender] POST ${url}`, JSON.stringify(body));
       const response = await fetch(url, {
         method: 'POST',
         headers: {
