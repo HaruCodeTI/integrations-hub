@@ -1,0 +1,6 @@
+[     396ms] [WARNING] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation @ https://cdn.tailwindcss.com/:63
+[   13110ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ https://gateway.harucode.com.br/api/v2/templates/968853216316915:0
+[   63336ms] [WARNING] [Bun] Hot-module-reloading socket disconnected, reconnecting... @ https://gateway.harucode.com.br/_bun/client/index-0000000044a0a2a9.js:20
+[   65372ms] [WARNING] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation @ https://cdn.tailwindcss.com/:63
+[  127948ms] [WARNING] [Bun] Hot-module-reloading socket disconnected, reconnecting... @ https://gateway.harucode.com.br/_bun/client/index-0000000044a0a2a9.js:20
+[  130447ms] [WARNING] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation @ https://cdn.tailwindcss.com/:63

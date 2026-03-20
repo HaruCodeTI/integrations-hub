@@ -1,0 +1,14 @@
+[     545ms] [WARNING] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation @ https://cdn.tailwindcss.com/:63
+[   33611ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ https://gateway.harucode.com.br/api/v2/templates?phone_number_id=968853216316915:0
+[   33612ms] [ERROR] Error: Erro ao carregar templates
+    at https://gateway.harucode.com.br/_bun/client/index-0000000023aa3166.js:21415:19 @ :0
+[   93528ms] [WARNING] [Bun] Hot-module-reloading socket disconnected, reconnecting... @ https://gateway.harucode.com.br/_bun/client/index-0000000023aa3166.js:20
+[   95545ms] [WARNING] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation @ https://cdn.tailwindcss.com/:63
+[   98811ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ https://gateway.harucode.com.br/api/v2/templates?phone_number_id=968853216316915:0
+[   98811ms] [ERROR] Error: Erro ao carregar templates
+    at https://gateway.harucode.com.br/_bun/client/index-0000000023aa3166.js:21415:19 @ :0
+[  158803ms] [WARNING] [Bun] Hot-module-reloading socket disconnected, reconnecting... @ https://gateway.harucode.com.br/_bun/client/index-0000000023aa3166.js:20
+[  160812ms] [WARNING] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation @ https://cdn.tailwindcss.com/:63
+[  163783ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ https://gateway.harucode.com.br/api/v2/templates?phone_number_id=968853216316915:0
+[  163783ms] [ERROR] Error: Erro ao carregar templates
+    at https://gateway.harucode.com.br/_bun/client/index-0000000023aa3166.js:21415:19 @ :0

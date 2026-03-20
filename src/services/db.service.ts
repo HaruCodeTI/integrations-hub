@@ -671,6 +671,15 @@ export class DatabaseService {
     ).run(campaign_id);
   }
 
+  getTodayGlobalMetrics(): { sent: number; failed: number; campaigns_running: number } {
+    return this.db.query(`
+      SELECT
+        (SELECT COUNT(*) FROM campaign_contacts WHERE status IN ('sent','delivered','read') AND sent_at >= date('now')) as sent,
+        (SELECT COUNT(*) FROM campaign_contacts WHERE status = 'failed' AND created_at >= date('now')) as failed,
+        (SELECT COUNT(*) FROM campaigns WHERE status = 'running') as campaigns_running
+    `).get() as { sent: number; failed: number; campaigns_running: number };
+  }
+
   countSentToday(phone_number_id: string): number {
     const row = this.db.query(`
       SELECT COUNT(*) as count

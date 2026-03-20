@@ -1,5 +1,6 @@
 // src/modules/dashboard/dashboard.routes.ts
 import { DashboardService } from './dashboard.service';
+import { getHealthData } from '../health/health.service';
 import { env } from '../../config/env';
 
 const json = (data: unknown, status = 200) =>
@@ -8,7 +9,7 @@ const json = (data: unknown, status = 200) =>
     headers: { 'Content-Type': 'application/json' },
   });
 
-export function dashboardRoutes(req: Request, method: string, pathname: string): Response | null {
+export function dashboardRoutes(req: Request, method: string, pathname: string): Response | Promise<Response> | null {
   const match = pathname.match(/^\/api\/v2\/dashboard\/([^/]+)$/);
   if (match && method === 'GET') {
     const phone_number_id = match[1];
@@ -19,6 +20,10 @@ export function dashboardRoutes(req: Request, method: string, pathname: string):
     } catch (e: any) {
       return json({ error: e.message }, 500);
     }
+  }
+
+  if (pathname === '/api/v2/health' && method === 'GET') {
+    return getHealthData().then(data => json(data));
   }
 
   if (pathname === '/api/v2/config' && method === 'GET') {

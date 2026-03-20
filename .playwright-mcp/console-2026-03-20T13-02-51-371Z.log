@@ -1,0 +1,16 @@
+[     591ms] [WARNING] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation @ https://cdn.tailwindcss.com/:63
+[    4298ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ https://gateway.harucode.com.br/favicon.ico:0
+[   96138ms] [WARNING] [Bun] Hot-module-reloading socket disconnected, reconnecting... @ https://gateway.harucode.com.br/_bun/client/index-00000000cb00a208.js:20
+[   97940ms] [WARNING] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation @ https://cdn.tailwindcss.com/:63
+[  164916ms] [WARNING] [Bun] Hot-module-reloading socket disconnected, reconnecting... @ https://gateway.harucode.com.br/_bun/client/index-00000000cb00a208.js:20
+[  166627ms] [WARNING] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation @ https://cdn.tailwindcss.com/:63
+[  213485ms] [WARNING] [Bun] Hot-module-reloading socket disconnected, reconnecting... @ https://gateway.harucode.com.br/_bun/client/index-00000000cb00a208.js:20
+[  213709ms] [ERROR] Failed to load resource: the server responded with a status of 502 (Bad Gateway) @ https://gateway.harucode.com.br/painel/templates:0
+[  318670ms] [WARNING] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation @ https://cdn.tailwindcss.com/:63
+[  320404ms] [WARNING] [Bun] Hot update was not accepted because it or its importers do not call `import.meta.hot.accept`. To prevent full page reloads, call `import.meta.hot.accept` in one of the following files to handle the update:
+
+Module "node_modules/react-router-dom/dist/index.mjs" is not accepted by src/frontend/App.tsx,
+└ imported by "src/frontend/index.html".
+Module "node_modules/react-router/dist/development/index.mjs" is not accepted by node_modules/react-router-dom/dist/index.mjs,
+├ imported by "src/frontend/App.tsx",
+└ imported by "src/frontend/index.html". @ https://gateway.harucode.com.br/_bun/client/index-00000000bd9f580c.js:23

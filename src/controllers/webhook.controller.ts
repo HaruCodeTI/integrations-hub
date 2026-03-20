@@ -4,6 +4,7 @@ import { router } from '../services/router.service';
 import { ghlApi } from '../services/ghl-api.service';
 import { mediaService } from '../services/media.service';
 import { db } from '../services/db.service';
+import { recordWebhookReceived } from '../modules/health/health.service';
 
 export class WebhookController {
 
@@ -21,6 +22,7 @@ export class WebhookController {
   }
 
   static async handleMessage(req: Request): Promise<Response> {
+    recordWebhookReceived();
     try {
       const rawBody = await req.text();
       const signatureHeader = req.headers.get('x-hub-signature-256');

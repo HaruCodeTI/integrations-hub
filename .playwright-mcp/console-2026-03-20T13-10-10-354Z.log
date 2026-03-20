@@ -1,0 +1,3 @@
+[     224ms] [WARNING] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation @ https://cdn.tailwindcss.com/:63
+[  118941ms] [WARNING] [Bun] Hot-module-reloading socket disconnected, reconnecting... @ https://gateway.harucode.com.br/_bun/client/index-00000000bd9f580c.js:20
+[  121298ms] [WARNING] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation @ https://cdn.tailwindcss.com/:63
