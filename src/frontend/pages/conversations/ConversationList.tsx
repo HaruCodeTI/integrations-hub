@@ -57,34 +57,37 @@ export default function ConversationList() {
   const navigate = useNavigate();
   const params = useParams();
 
+  const fetchConversations = async () => {
+    try {
+      const raw = await fetch('/api/v2/accounts').then(r => r.json()) as unknown;
+      const accounts = raw as Account[];
+      if (!Array.isArray(accounts)) return;
+      const results = await Promise.all(
+        accounts.map(async (account) => {
+          try {
+            const rawConvs: unknown = await fetch(
+              `/api/v2/conversations/${account.phone_number_id}`
+            ).then(r => r.json());
+            const convs = rawConvs as ConversationSummary[];
+            if (!Array.isArray(rawConvs)) return [];
+            return convs.map(c => ({
+              ...c,
+              phone_number_id: account.phone_number_id,
+              account_name: account.name,
+            }));
+          } catch {
+            return [];
+          }
+        })
+      );
+      setConversations(results.flat());
+    } catch { /* silencioso */ }
+  };
+
   useEffect(() => {
-    // First fetch all accounts, then fetch conversations per account
-    fetch('/api/v2/accounts')
-      .then(r => r.json())
-      .then(async (raw: unknown) => {
-        const accounts = raw as Account[];
-        if (!Array.isArray(accounts)) return;
-        const results = await Promise.all(
-          accounts.map(async (account) => {
-            try {
-              const rawConvs: unknown = await fetch(
-                `/api/v2/conversations/${account.phone_number_id}`
-              ).then(r => r.json());
-              const convs = rawConvs as ConversationSummary[];
-              if (!Array.isArray(rawConvs)) return [];
-              return convs.map(c => ({
-                ...c,
-                phone_number_id: account.phone_number_id,
-                account_name: account.name,
-              }));
-            } catch {
-              return [];
-            }
-          })
-        );
-        setConversations(results.flat());
-      })
-      .catch(console.error);
+    fetchConversations();
+    const timer = setInterval(fetchConversations, 4000);
+    return () => clearInterval(timer);
   }, []);
 
   // Filtrar por tab

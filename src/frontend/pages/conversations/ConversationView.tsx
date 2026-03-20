@@ -35,7 +35,7 @@ export default function ConversationView({ phoneId, contact }: Props) {
     const timer = setInterval(() => {
       fetch(url, { signal: controller.signal })
         .then(r => r.json()).then(setMessages).catch(() => {});
-    }, 10000);
+    }, 3000);
     return () => { controller.abort(); clearInterval(timer); };
   }, [phoneId, contact]);
 
