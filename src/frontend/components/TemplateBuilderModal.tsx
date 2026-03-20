@@ -158,13 +158,16 @@ export default function TemplateBuilderModal({ phoneNumberId, onClose, onSuccess
               <option value="es">Español</option>
             </Select>
 
-            <Input
-              label="Cabeçalho (opcional)"
-              value={header}
-              onChange={e => setHeader(e.target.value)}
-              placeholder="Título do template"
-              maxLength={60}
-            />
+            <div>
+              <Input
+                label="Cabeçalho (opcional)"
+                value={header}
+                onChange={e => setHeader(e.target.value)}
+                placeholder="Título do template (sem emojis)"
+                maxLength={60}
+              />
+              <p className="text-xs text-text-tertiary mt-0.5">Evite emojis no cabeçalho — a Meta rejeita headers de texto com emoji.</p>
+            </div>
 
             <div>
               <div className="flex items-center justify-between mb-1">
