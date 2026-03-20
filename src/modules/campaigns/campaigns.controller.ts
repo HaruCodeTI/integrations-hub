@@ -20,7 +20,11 @@ export class CampaignsController {
         const file = formData.get('file') as File | null;
         const metaStr = formData.get('meta') as string | null;
         if (!metaStr) return Response.json({ error: 'Campo meta obrigatório' }, { status: 400 });
-        body = JSON.parse(metaStr);
+        try {
+          body = JSON.parse(metaStr);
+        } catch {
+          return Response.json({ error: 'Campo meta deve ser JSON válido' }, { status: 400 });
+        }
 
         if (file) {
           // Parse the file
@@ -105,7 +109,10 @@ export class CampaignsController {
 
   // GET /api/v2/campaigns/:id/contacts?page=1
   static listContacts(id: string, url: URL): Response {
-    const page = parseInt(url.searchParams.get('page') ?? '1', 10);
+    const campaign = db.getCampaign(id);
+    if (!campaign) return Response.json({ error: 'Campanha não encontrada' }, { status: 404 });
+    const rawPage = parseInt(url.searchParams.get('page') ?? '1', 10);
+    const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
     const contacts = db.listCampaignContacts(id, undefined, page, 50);
     return Response.json(contacts);
   }
@@ -135,6 +142,7 @@ export class CampaignsController {
         preview: result.rows.slice(0, 5),
       });
     } catch (err) {
+      console.error('[campaigns] parseFile error:', err);
       return Response.json({ error: 'Erro ao processar arquivo' }, { status: 500 });
     }
   }

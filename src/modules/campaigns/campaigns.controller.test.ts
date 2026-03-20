@@ -92,9 +92,23 @@ describe('CampaignsController.cancelCampaign', () => {
 });
 
 describe('CampaignsController.listContacts', () => {
+  test('retorna 404 para campanha inexistente', () => {
+    const url = new URL('http://localhost/api/v2/campaigns/nonexistent/contacts');
+    const res = CampaignsController.listContacts('nonexistent', url);
+    expect(res.status).toBe(404);
+  });
+
   test('retorna 200 com lista de contatos', () => {
-    const url = new URL('http://localhost/api/v2/campaigns/some-id/contacts');
-    const res = CampaignsController.listContacts('some-id', url);
+    const campaign = inMemoryDb.createCampaign({
+      name: 'ContactsTest',
+      phone_number_id: 'phone-contacts',
+      template_name: 'hello',
+      template_language: 'pt_BR',
+      variable_mapping: [],
+      total_contacts: 0,
+    });
+    const url = new URL(`http://localhost/api/v2/campaigns/${campaign.id}/contacts`);
+    const res = CampaignsController.listContacts(campaign.id, url);
     expect(res.status).toBe(200);
   });
 });
