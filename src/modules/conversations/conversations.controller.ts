@@ -16,7 +16,12 @@ export class ConversationsController {
 
   static async sendMessage(req: Request, phone_number_id: string, contact_phone: string): Promise<Response> {
     const body = await req.json().catch(() => null);
-    if (!body?.message || typeof body.message !== 'string') {
+
+    const isMedia = !!body?.type;
+    if (isMedia && !body?.media_id) {
+      return Response.json({ error: 'Campo media_id obrigatorio' }, { status: 400 });
+    }
+    if (!isMedia && (!body?.message || typeof body.message !== 'string')) {
       return Response.json({ error: 'Campo message obrigatorio' }, { status: 400 });
     }
 
@@ -30,6 +35,10 @@ export class ConversationsController {
         phone_number_id,
         contact_phone,
         message: body.message,
+        type: body.type,
+        media_id: body.media_id,
+        caption: body.caption,
+        filename: body.filename,
       });
       return Response.json(result);
     } catch (err: any) {

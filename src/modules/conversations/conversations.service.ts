@@ -15,15 +15,30 @@ export class ConversationsService {
   static async sendMessage(params: {
     phone_number_id: string;
     contact_phone: string;
-    message: string;
+    message?: string;
+    type?: 'text' | 'image' | 'audio' | 'video' | 'document';
+    media_id?: string;
+    caption?: string;
+    filename?: string;
   }): Promise<{ wamid: string }> {
-    // sender.send() busca meta_token do DB automaticamente via phone_number_id
-    const result = await sender.send({
-      phone_number_id: params.phone_number_id,
-      to: params.contact_phone,
-      type: 'text',
-      text: { body: params.message },
-    });
+    const { phone_number_id, contact_phone, message, type = 'text', media_id, caption, filename } = params;
+
+    let sendInput: Parameters<typeof sender.send>[0];
+    if (type === 'text') {
+      sendInput = { phone_number_id, to: contact_phone, type: 'text', text: { body: message! } };
+    } else if (type === 'image') {
+      sendInput = { phone_number_id, to: contact_phone, type: 'image', image: { id: media_id!, caption } };
+    } else if (type === 'audio') {
+      sendInput = { phone_number_id, to: contact_phone, type: 'audio', audio: { id: media_id! } };
+    } else if (type === 'video') {
+      sendInput = { phone_number_id, to: contact_phone, type: 'video', video: { id: media_id!, caption } };
+    } else if (type === 'document') {
+      sendInput = { phone_number_id, to: contact_phone, type: 'document', document: { id: media_id!, caption, filename } };
+    } else {
+      throw new Error(`Tipo nao suportado: ${type}`);
+    }
+
+    const result = await sender.send(sendInput);
 
     if (!result.success || !result.data?.messages?.[0]?.id) {
       throw new Error(result.error ?? 'Falha ao enviar mensagem via Meta API');
@@ -31,14 +46,18 @@ export class ConversationsService {
 
     const wamid = result.data.messages[0].id as string;
 
-    // Salva a mensagem outbound no inbox
+    // content espelha o payload enviado — inclui 'type' para compatibilidade com renderBody no frontend
+    const content = type === 'text'
+      ? { type: 'text', text: { body: message } }
+      : { type, [type]: { id: media_id, ...(caption ? { caption } : {}), ...(filename ? { filename } : {}) } };
+
     db.saveMessage({
       id: wamid,
-      phone_number_id: params.phone_number_id,
-      contact_phone: params.contact_phone,
+      phone_number_id,
+      contact_phone,
       direction: 'outbound',
-      type: 'text',
-      content: { text: { body: params.message } },
+      type,
+      content,
     });
 
     return { wamid };
