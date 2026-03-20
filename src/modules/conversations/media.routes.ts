@@ -72,9 +72,66 @@ export async function mediaRoutes(
     }
   }
 
-  // POST /api/v2/media/upload — implementado na Task 2
   if (method === 'POST' && pathname === '/api/v2/media/upload') {
-    return json({ error: 'Not implemented' }, 501);
+    let form: FormData;
+    try {
+      form = await req.formData();
+    } catch {
+      return json({ error: 'Corpo da requisicao invalido (multipart esperado)' }, 400);
+    }
+
+    const phoneNumberId = (form.get('phoneNumberId') as string | null) ?? '';
+    const file = form.get('file') as File | null;
+
+    if (!phoneNumberId || !file) {
+      return json({ error: 'phoneNumberId e file sao obrigatorios' }, 400);
+    }
+
+    const client = db.getClientByPhoneId(phoneNumberId);
+    if (!client) return json({ error: 'Conta nao encontrada' }, 400);
+
+    // MIME derivado do objeto File (determinado pelo Bun/browser — não do cliente)
+    const mimeType = file.type;
+    const mediaType = MIME_TO_TYPE[mimeType];
+    if (!mediaType) {
+      return json({ error: `Tipo de arquivo nao suportado: ${mimeType}` }, 400);
+    }
+
+    if (file.size > SIZE_LIMIT_BYTES[mediaType]) {
+      return json({ error: 'Arquivo excede o limite permitido para este tipo' }, 413);
+    }
+
+    try {
+      const metaForm = new FormData();
+      metaForm.append('file', file);
+      metaForm.append('type', mimeType);
+      metaForm.append('messaging_product', 'whatsapp');
+
+      const META_API_BASE = 'https://graph.facebook.com/v25.0';
+      const res = await fetch(`${META_API_BASE}/${phoneNumberId}/media`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${client.meta_token}` },
+        body: metaForm,
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        console.error('[media upload] Meta error:', res.status, err);
+        return new Response('Bad Gateway', { status: 502 });
+      }
+
+      const data = await res.json() as { id: string };
+      return json({
+        media_id: data.id,
+        mime_type: mimeType,
+        type: mediaType,
+        filename: file.name,
+      });
+
+    } catch (err: any) {
+      console.error('[media upload] erro:', err.message);
+      return new Response('Bad Gateway', { status: 502 });
+    }
   }
 
   return null;
