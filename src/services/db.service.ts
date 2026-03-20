@@ -739,6 +739,28 @@ export class DatabaseService {
     `).run(campaign_id);
   }
 
+  getNextQueuedJobs(limit: number): CampaignJob[] {
+    return this.db.query(`
+      SELECT cj.* FROM campaign_jobs cj
+      JOIN campaigns c ON cj.campaign_id = c.id
+      WHERE cj.status = 'queued'
+        AND cj.next_attempt_at <= datetime('now')
+        AND c.status = 'running'
+      ORDER BY cj.next_attempt_at ASC
+      LIMIT ?
+    `).all(limit) as CampaignJob[];
+  }
+
+  requeueJob(job_id: number, delaySeconds: number): void {
+    this.db.prepare(`
+      UPDATE campaign_jobs
+      SET status = 'queued',
+          attempts = attempts + 1,
+          next_attempt_at = datetime('now', ? || ' seconds')
+      WHERE id = ?
+    `).run(String(delaySeconds), job_id);
+  }
+
   // ─── Signup: criação de clientes em transação ──────────────
 
   createClientsFromSignup(
