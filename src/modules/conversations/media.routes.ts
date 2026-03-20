@@ -8,6 +8,7 @@ const json = (data: unknown, status = 200) =>
     headers: { 'Content-Type': 'application/json' },
   });
 
+// Exportados para uso pelo handler de upload (POST /api/v2/media/upload)
 // MIME → tipo Meta para upload
 export const MIME_TO_TYPE: Record<string, 'image' | 'audio' | 'video' | 'document'> = {
   'image/jpeg': 'image', 'image/png': 'image', 'image/webp': 'image',
@@ -44,19 +45,6 @@ export async function mediaRoutes(
     if (!db.getClientByPhoneId(phoneNumberId)) return json({ error: 'Conta nao encontrada' }, 400);
 
     try {
-      // Verifica existência na Meta — detecta 404 permanente via string de erro
-      // (mediaService.getMediaUrl lança: "Meta Media API error: 404 — <body>")
-      try {
-        await mediaService.getMediaUrl(mediaId, phoneNumberId);
-      } catch (err: any) {
-        const msg = (err.message ?? '') as string;
-        if (msg.includes(': 404')) {
-          return json({ expired: true }, 404);
-        }
-        return new Response('Bad Gateway', { status: 502 });
-      }
-
-      // Download (usa cache em memória se ainda válido)
       const { buffer, mimeType } = await mediaService.downloadAndCache(mediaId, phoneNumberId);
 
       const headers: Record<string, string> = {
@@ -66,14 +54,20 @@ export async function mediaRoutes(
       };
 
       if (filename) {
-        const safe = filename.replace(/[^a-zA-Z0-9._\-]/g, '_');
+        const safe = filename.replace(/[^a-zA-Z0-9_\-]/g, '_');
         headers['Content-Disposition'] = `attachment; filename="${safe}"`;
       }
 
       return new Response(buffer, { status: 200, headers });
 
     } catch (err: any) {
-      console.error('[media proxy] erro ao servir:', err.message);
+      const msg = (err.message ?? '') as string;
+      // mediaService.downloadAndCache internamente chama getMediaUrl, que lança:
+      // "Meta Media API error: 404 — <body>" para mídia expirada/não encontrada
+      if (msg.includes(': 404')) {
+        return json({ expired: true }, 404);
+      }
+      console.error('[media proxy] erro ao servir:', msg);
       return new Response('Bad Gateway', { status: 502 });
     }
   }
