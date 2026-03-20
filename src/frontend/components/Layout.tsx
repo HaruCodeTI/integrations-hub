@@ -12,7 +12,8 @@ export default function Layout() {
     <div className="flex h-screen">
       <aside className="w-56 bg-white border-r border-gray-200 flex flex-col">
         <div className="p-4 border-b border-gray-200">
-          <span className="font-bold text-blue-600 text-sm">HaruCode Painel</span>
+          <span className="font-bold text-indigo-600 text-sm">HaruCode</span>
+          <span className="text-gray-400 text-xs ml-1">Painel</span>
         </div>
         <nav className="flex-1 p-3 space-y-1">
           {NAV.map(item => (

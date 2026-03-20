@@ -102,9 +102,14 @@ export function adminDashboardHTML(
 <body>
   <header>
     <h1>🔧 HaruCode Gateway Admin</h1>
-    <form method="POST" action="/admin/logout">
-      <button type="submit">Sair</button>
-    </form>
+    <div style="display:flex;align-items:center;gap:12px">
+      <a href="/painel" style="background:rgba(255,255,255,0.15);color:white;border:1px solid rgba(255,255,255,0.3);padding:6px 14px;border-radius:6px;font-size:13px;text-decoration:none;font-weight:600;">
+        📱 Painel WhatsApp →
+      </a>
+      <form method="POST" action="/admin/logout">
+        <button type="submit">Sair</button>
+      </form>
+    </div>
   </header>
 
   <main>
