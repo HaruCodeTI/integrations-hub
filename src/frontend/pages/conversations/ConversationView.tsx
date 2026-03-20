@@ -15,18 +15,21 @@ export default function ConversationView({ phoneId, contact }: Props) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch(`/api/v2/conversations/${phoneId}/${encodeURIComponent(contact)}`)
+    const controller = new AbortController();
+    const url = `/api/v2/conversations/${phoneId}/${encodeURIComponent(contact)}`;
+    fetch(url, { signal: controller.signal })
       .then(r => r.json())
       .then(setMessages)
       .catch(() => {});
     const timer = setInterval(() => {
-      fetch(`/api/v2/conversations/${phoneId}/${encodeURIComponent(contact)}`)
+      fetch(url, { signal: controller.signal })
         .then(r => r.json()).then(setMessages).catch(() => {});
     }, 10000);
-    return () => clearInterval(timer);
+    return () => { controller.abort(); clearInterval(timer); };
   }, [phoneId, contact]);
 
   useEffect(() => {
@@ -43,16 +46,24 @@ export default function ConversationView({ phoneId, contact }: Props) {
   async function sendMessage() {
     if (!text.trim()) return;
     setSending(true);
+    setError(null);
     try {
-      await fetch(`/api/v2/conversations/${phoneId}/${encodeURIComponent(contact)}`, {
+      const res = await fetch(`/api/v2/conversations/${phoneId}/${encodeURIComponent(contact)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text.trim() }),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body.error ?? 'Erro ao enviar mensagem');
+        return;
+      }
       setText('');
       // Recarrega mensagens
       const updated = await fetch(`/api/v2/conversations/${phoneId}/${encodeURIComponent(contact)}`).then(r => r.json());
       setMessages(updated);
+    } catch {
+      setError('Erro de conexao');
     } finally {
       setSending(false);
     }
@@ -81,6 +92,11 @@ export default function ConversationView({ phoneId, contact }: Props) {
         ))}
         <div ref={bottomRef} />
       </div>
+
+      {/* Erro de envio */}
+      {error && (
+        <div className="px-4 py-2 bg-red-50 border-t border-red-200 text-red-600 text-xs">{error}</div>
+      )}
 
       {/* Input */}
       <div className="p-4 border-t border-gray-200 bg-white flex gap-2">
