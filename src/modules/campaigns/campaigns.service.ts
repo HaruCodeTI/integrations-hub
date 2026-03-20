@@ -19,12 +19,32 @@ export interface CreateCampaignParams {
   scheduled_at?: string;
 }
 
+function parseCSVLine(line: string): string[] {
+  const fields: string[] = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') { field += '"'; i++; }
+      else { inQuotes = !inQuotes; }
+    } else if (ch === ',' && !inQuotes) {
+      fields.push(field.trim());
+      field = '';
+    } else {
+      field += ch;
+    }
+  }
+  fields.push(field.trim());
+  return fields;
+}
+
 export class CampaignsService {
   static parseCSV(csv: string): ParseResult {
     const lines = csv.split('\n').map(l => l.trim()).filter(l => l.length > 0);
     if (lines.length < 2) return { rows: [], columns: [], error: 'CSV vazio ou sem dados' };
 
-    const columns = lines[0].split(',').map(c => c.trim());
+    const columns = parseCSVLine(lines[0]);
     if (!columns.includes('telefone')) {
       return { rows: [], columns, error: 'Coluna "telefone" obrigatória não encontrada' };
     }
@@ -34,7 +54,7 @@ export class CampaignsService {
     const rows: Array<Record<string, string>> = [];
 
     for (let i = 1; i < lines.length && rows.length < 10000; i++) {
-      const parts = lines[i].split(',').map(p => p.trim());
+      const parts = parseCSVLine(lines[i]);
       const phone = parts[telIdx] ?? '';
       if (!phone || seen.has(phone)) continue;
       seen.add(phone);
@@ -63,7 +83,6 @@ export class CampaignsService {
   }
 
   static async createCampaign(params: CreateCampaignParams): Promise<Campaign> {
-    const status = params.scheduled_at ? 'pending' : 'running';
     const campaign = db.createCampaign({
       name: params.name,
       phone_number_id: params.phone_number_id,
@@ -72,11 +91,10 @@ export class CampaignsService {
       variable_mapping: params.variable_mapping,
       delay_seconds: params.delay_seconds,
       scheduled_at: params.scheduled_at,
-      status,
       total_contacts: params.contacts.length,
     });
     db.insertCampaignContacts(campaign.id, params.contacts);
-    const contactIds = db.listCampaignContacts(campaign.id).map(c => c.id);
+    const contactIds = db.listCampaignContacts(campaign.id, undefined, 1, params.contacts.length || 10000).map(c => c.id);
     db.insertCampaignJobs(campaign.id, contactIds);
     return campaign;
   }

@@ -101,4 +101,23 @@ describe('CampaignsService.createCampaign', () => {
     });
     expect(campaign.status).toBe('pending');
   });
+
+  test('cria jobs para todos os contatos (mais de 50)', async () => {
+    const contacts = Array.from({ length: 55 }, (_, i) => ({
+      phone: `554190000${String(i).padStart(4, '0')}`,
+      variables: {},
+    }));
+    const campaign = await CampaignsService.createCampaign({
+      name: 'Large Campaign',
+      phone_number_id: 'phone-456',
+      template_name: 'hello_world',
+      template_language: 'pt_BR',
+      variable_mapping: [],
+      delay_seconds: 5,
+      contacts,
+    });
+    // Verify all 55 contacts have jobs
+    const jobCount = inMemoryDb.countActiveJobs(campaign.id);
+    expect(jobCount).toBe(55);
+  });
 });
