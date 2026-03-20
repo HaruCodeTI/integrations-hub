@@ -30,7 +30,13 @@ async function graphRequest(url: string, token: string, options?: RequestInit): 
     },
   });
   const data = await res.json() as any;
-  if (data.error) throw new Error(data.error.message ?? 'Erro na Meta API');
+  if (data.error) {
+    const e = data.error;
+    const detail = e.error_data ? ` | data: ${JSON.stringify(e.error_data)}` : '';
+    const subcode = e.error_subcode ? ` | subcode: ${e.error_subcode}` : '';
+    console.error('[Meta API error]', JSON.stringify(data.error));
+    throw new Error(`${e.message ?? 'Erro na Meta API'} (code ${e.code}${subcode}${detail})`);
+  }
   return data;
 }
 
@@ -66,6 +72,7 @@ export class TemplatesService {
     input: CreateTemplateInput
   ): Promise<{ id: string }> {
     const wabaId = await TemplatesService.getWabaId(phone_number_id, token);
+    console.log('[createTemplate] payload:', JSON.stringify(input, null, 2));
     const data = await graphRequest(`${GRAPH_URL}/${wabaId}/message_templates`, token, {
       method: 'POST',
       body: JSON.stringify(input),
