@@ -11,10 +11,14 @@ interface Config {
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
-  const copy = () => {
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard not available or denied
+    }
   };
   return (
     <button onClick={copy} className="p-1.5 rounded hover:bg-bg-default text-text-tertiary transition-colors">
@@ -47,14 +51,19 @@ function Field({ label, value, masked }: { label: string; value: string; masked?
 
 export default function Settings() {
   const [config, setConfig] = useState<Config | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/v2/config')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then(setConfig)
-      .catch(console.error);
+      .catch((err: Error) => setError(err.message));
   }, []);
 
+  if (error) return <div className="p-6 text-sm text-red-600">Erro ao carregar configurações: {error}</div>;
   if (!config) return <div className="p-6 text-sm text-text-secondary">Carregando...</div>;
 
   return (
