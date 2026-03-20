@@ -769,6 +769,60 @@ export class DatabaseService {
     `).run(String(delaySeconds), job_id);
   }
 
+  // ─── Dashboard ─────────────────────────────────────────────
+
+  getDashboardMetrics(phone_number_id: string, since: string): {
+    sent7d: number;
+    delivered7d: number;
+    read7d: number;
+    activeCampaigns: number;
+    recentCampaigns: Array<{
+      id: string;
+      name: string;
+      status: string;
+      total_contacts: number;
+      sent: number;
+      delivered: number;
+    }>;
+  } {
+    const sent7d = (this.db.query(
+      `SELECT COUNT(*) as count FROM messages WHERE phone_number_id = ? AND direction = 'outbound' AND created_at >= ?`
+    ).get(phone_number_id, since) as { count: number } | null)?.count ?? 0;
+
+    const delivered7d = (this.db.query(
+      `SELECT COUNT(*) as count FROM messages WHERE phone_number_id = ? AND direction = 'outbound' AND status IN ('delivered','read') AND created_at >= ?`
+    ).get(phone_number_id, since) as { count: number } | null)?.count ?? 0;
+
+    const read7d = (this.db.query(
+      `SELECT COUNT(*) as count FROM messages WHERE phone_number_id = ? AND direction = 'outbound' AND status = 'read' AND created_at >= ?`
+    ).get(phone_number_id, since) as { count: number } | null)?.count ?? 0;
+
+    const activeCampaigns = (this.db.query(
+      `SELECT COUNT(*) as count FROM campaigns WHERE phone_number_id = ? AND status IN ('pending','running','paused')`
+    ).get(phone_number_id) as { count: number } | null)?.count ?? 0;
+
+    const recentCampaigns = this.db.query(`
+      SELECT c.id, c.name, c.status, c.total_contacts,
+        COALESCE(SUM(CASE WHEN cc.status IN ('sent','delivered','read') THEN 1 ELSE 0 END), 0) as sent,
+        COALESCE(SUM(CASE WHEN cc.status IN ('delivered','read') THEN 1 ELSE 0 END), 0) as delivered
+      FROM campaigns c
+      LEFT JOIN campaign_contacts cc ON cc.campaign_id = c.id
+      WHERE c.phone_number_id = ?
+      GROUP BY c.id
+      ORDER BY c.created_at DESC
+      LIMIT 5
+    `).all(phone_number_id) as Array<{
+      id: string;
+      name: string;
+      status: string;
+      total_contacts: number;
+      sent: number;
+      delivered: number;
+    }>;
+
+    return { sent7d, delivered7d, read7d, activeCampaigns, recentCampaigns };
+  }
+
   // ─── Signup: criação de clientes em transação ──────────────
 
   createClientsFromSignup(

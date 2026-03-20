@@ -14,6 +14,7 @@ import { conversationsRoutes } from '../modules/conversations/conversations.rout
 import { templatesRoutes } from '../modules/templates/templates.routes';
 import { campaignsRoutes } from '../modules/campaigns/campaigns.routes';
 import { accountsRoutes } from '../modules/accounts/accounts.routes';
+import { dashboardRoutes } from '../modules/dashboard/dashboard.routes';
 
 const htmlResponse = (html: string) =>
   new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" }, status: 200 });
@@ -182,6 +183,9 @@ export const appRouter = async (req: Request): Promise<Response> => {
         status: 401, headers: { 'Content-Type': 'application/json' },
       });
     }
+
+    const dashboardResult = dashboardRoutes(req, method, pathname);
+    if (dashboardResult) return dashboardResult;
 
     const accountsResult = await accountsRoutes(req, method, pathname);
     if (accountsResult) return accountsResult;
