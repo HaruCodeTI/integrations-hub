@@ -11,6 +11,7 @@ import { AdminController, isAuthenticated } from '../controllers/admin.controlle
 import { SignupController } from '../controllers/signup.controller';
 import { PanelController } from '../controllers/panel.controller';
 import { env } from '../config/env';
+import { conversationsRoutes } from '../modules/conversations/conversations.routes';
 
 const htmlResponse = (html: string) =>
   new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" }, status: 200 });
@@ -179,6 +180,9 @@ export const appRouter = async (req: Request): Promise<Response> => {
         status: 401, headers: { 'Content-Type': 'application/json' },
       });
     }
+
+    const conversationsResult = await conversationsRoutes(req, method, pathname);
+    if (conversationsResult) return conversationsResult;
 
     if (method === 'GET' && pathname === '/api/v2/accounts') {
       return PanelController.listAccounts();
