@@ -115,3 +115,37 @@ test("createClientsFromSignup pula duplicatas sem abortar", () => {
   const all = svc.getAllClients();
   expect(all.some(c => c.phone_number_id === "p2")).toBe(true);
 });
+
+// ─── new panel tables ─────────────────────────────────────────
+
+import { describe } from "bun:test";
+
+describe('new panel tables', () => {
+  test('tabela messages existe', () => {
+    const result = (svc as any)['db'].query(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='messages'`
+    ).get();
+    expect(result).toBeTruthy();
+  });
+
+  test('tabela campaigns existe', () => {
+    const result = (svc as any)['db'].query(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='campaigns'`
+    ).get();
+    expect(result).toBeTruthy();
+  });
+
+  test('tabela campaign_contacts existe', () => {
+    const result = (svc as any)['db'].query(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='campaign_contacts'`
+    ).get();
+    expect(result).toBeTruthy();
+  });
+
+  test('tabela campaign_jobs existe', () => {
+    const result = (svc as any)['db'].query(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='campaign_jobs'`
+    ).get();
+    expect(result).toBeTruthy();
+  });
+});

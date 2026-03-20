@@ -147,6 +147,70 @@ export class DatabaseService {
       DELETE FROM message_mappings WHERE created_at < datetime('now', '-7 days');
     `);
 
+    // Painel: mensagens (inbox)
+    this.db.exec(`CREATE TABLE IF NOT EXISTS messages (
+        id TEXT PRIMARY KEY,
+        phone_number_id TEXT NOT NULL,
+        contact_phone TEXT NOT NULL,
+        direction TEXT NOT NULL,
+        type TEXT NOT NULL,
+        content TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'sent',
+        campaign_id TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      )`);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_conversation
+        ON messages(phone_number_id, contact_phone, created_at)`);
+
+    // Painel: campanhas
+    this.db.exec(`CREATE TABLE IF NOT EXISTS campaigns (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        phone_number_id TEXT NOT NULL,
+        template_name TEXT NOT NULL,
+        template_language TEXT NOT NULL,
+        variable_mapping TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        scheduled_at TEXT,
+        delay_seconds INTEGER NOT NULL DEFAULT 3,
+        meta_tier INTEGER NOT NULL DEFAULT 1,
+        total_contacts INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+      )`);
+
+    // Painel: contatos por campanha
+    this.db.exec(`CREATE TABLE IF NOT EXISTS campaign_contacts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        campaign_id TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        variables TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        wamid TEXT,
+        error_code TEXT,
+        error_message TEXT,
+        sent_at TEXT,
+        delivered_at TEXT,
+        read_at TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      )`);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_campaign_contacts_campaign
+        ON campaign_contacts(campaign_id, status)`);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_campaign_contacts_wamid
+        ON campaign_contacts(wamid)`);
+
+    // Painel: fila de jobs de envio
+    this.db.exec(`CREATE TABLE IF NOT EXISTS campaign_jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        campaign_id TEXT NOT NULL,
+        contact_id INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'queued',
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TEXT DEFAULT (datetime('now')),
+        created_at TEXT DEFAULT (datetime('now'))
+      )`);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_campaign_jobs_next
+        ON campaign_jobs(status, next_attempt_at)`);
+
     console.log('[🗄️  DB] SQLite inicializado com sucesso.');
   }
 
