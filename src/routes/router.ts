@@ -12,6 +12,7 @@ import { SignupController } from '../controllers/signup.controller';
 import { PanelController } from '../controllers/panel.controller';
 import { env } from '../config/env';
 import { conversationsRoutes } from '../modules/conversations/conversations.routes';
+import { templatesRoutes } from '../modules/templates/templates.routes';
 
 const htmlResponse = (html: string) =>
   new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" }, status: 200 });
@@ -183,6 +184,9 @@ export const appRouter = async (req: Request): Promise<Response> => {
 
     const conversationsResult = await conversationsRoutes(req, method, pathname);
     if (conversationsResult) return conversationsResult;
+
+    const templatesResult = await templatesRoutes(req, method, pathname);
+    if (templatesResult) return templatesResult;
 
     if (method === 'GET' && pathname === '/api/v2/accounts') {
       return PanelController.listAccounts();
