@@ -326,7 +326,7 @@ export default function ConversationView({ phoneId, contact }: Props) {
         });
 
         setUploading(false);
-        setAttachment(null);
+        // Não limpa o attachment ainda — só limpa após a confirmação do envio
         sendBody = {
           type: uploadResult.type,
           media_id: uploadResult.media_id,
@@ -349,6 +349,7 @@ export default function ConversationView({ phoneId, contact }: Props) {
         return;
       }
 
+      setAttachment(null);
       const updated = await fetch(`/api/v2/conversations/${phoneId}/${encodeURIComponent(contact)}`).then(r => r.json());
       setMessages(updated);
 
