@@ -685,6 +685,15 @@ export class DatabaseService {
 
   // ─── Campaign Jobs ──────────────────────────────────────────
 
+  /** Reseta jobs travados em 'processing' após restart do servidor */
+  resetStaleProcessingJobs(): number {
+    const result = this.db.prepare(
+      `UPDATE campaign_jobs SET status = 'queued', next_attempt_at = datetime('now')
+       WHERE status = 'processing'`
+    ).run();
+    return result.changes;
+  }
+
   insertCampaignJobs(campaign_id: string, contact_ids: number[]): void {
     const stmt = this.db.prepare(
       `INSERT INTO campaign_jobs (campaign_id, contact_id) VALUES (?, ?)`

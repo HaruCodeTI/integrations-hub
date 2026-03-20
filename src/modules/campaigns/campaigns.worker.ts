@@ -75,7 +75,9 @@ export async function processNextJob(): Promise<boolean> {
       const wamid = result.data.messages[0].id as string;
       db.markJobDone(job.id, job.contact_id, wamid);
     } else {
-      await handleJobFailure(job, result.error ?? 'Unknown error');
+      const errMsg = result.error ?? JSON.stringify(result.data) ?? 'Unknown error';
+      console.error(`[campaign-worker] Falha ao enviar para ${contact.phone}: ${errMsg}`);
+      await handleJobFailure(job, errMsg);
     }
   } catch (err) {
     await handleJobFailure(job, String(err));
@@ -107,6 +109,12 @@ async function handleJobFailure(
 // Fix #2: Use a 'running' flag to prevent re-entrant interval execution
 // and drain all queued jobs in a single tick before sleeping
 export function startCampaignWorker(): () => void {
+  // Recupera jobs travados em 'processing' por restart anterior
+  const recovered = db.resetStaleProcessingJobs();
+  if (recovered > 0) {
+    console.log(`[campaign-worker] Recuperados ${recovered} jobs travados em 'processing'`);
+  }
+
   let running = false;
   const interval = setInterval(async () => {
     if (running) return;
