@@ -1,184 +1,204 @@
-import React, { useEffect, useState } from 'react';
+// src/frontend/pages/campaigns/CampaignDetail.tsx
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import StatusBadge from '../../components/StatusBadge';
+import { ArrowLeft, Send, CheckCircle2, BookOpen, Users } from 'lucide-react';
+import { Card } from '../../components/ui/Card';
+import { Badge } from '../../components/ui/Badge';
+import { Button } from '../../components/ui/Button';
+import { Select } from '../../components/ui/Select';
 
 interface Campaign {
   id: string;
   name: string;
   status: string;
-  phone_number_id: string;
-  template_name: string;
-  template_language: string;
   total_contacts: number;
   sent_count: number;
   failed_count: number;
+  template_name: string;
   created_at: string;
-  scheduled_at?: string;
 }
 
 interface Contact {
-  id: string;
+  id: number;
   phone: string;
   status: string;
-  wamid?: string;
-  error_message?: string;
-  sent_at?: string;
+  sent_at: string | null;
+  error_message: string | null;
 }
+
+const statusVariant: Record<string, 'success' | 'warning' | 'error' | 'default' | 'info'> = {
+  done: 'success', running: 'info', paused: 'warning', cancelled: 'error', pending: 'default',
+};
+const statusLabel: Record<string, string> = {
+  done: 'Concluída', running: 'Em andamento', paused: 'Pausada', cancelled: 'Cancelada', pending: 'Pendente',
+};
+const contactStatusVariant: Record<string, 'success' | 'warning' | 'error' | 'default' | 'info'> = {
+  sent: 'info', delivered: 'success', read: 'success', failed: 'error', pending: 'default', cancelled: 'default',
+};
 
 export default function CampaignDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [filterStatus, setFilterStatus] = useState('');
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const load = async () => {
+    try {
+      const [cRes, ctRes] = await Promise.all([
+        fetch(`/api/v2/campaigns/${id}`),
+        fetch(`/api/v2/campaigns/${id}/contacts?page=${page}`),
+      ]);
+      const cData = await cRes.json() as any;
+      const ctData = await ctRes.json() as any;
+      setCampaign(cData);
+      setContacts(Array.isArray(ctData) ? ctData : ctData.contacts ?? []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (!id) return;
-    fetch(`/api/v2/campaigns/${id}`)
-      .then(r => r.json())
-      .then(data => { setCampaign(data); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, [id]);
-
-  useEffect(() => {
-    if (!id) return;
-    fetch(`/api/v2/campaigns/${id}/contacts?page=${page}`)
-      .then(r => r.json())
-      .then(data => setContacts(Array.isArray(data) ? data : []))
-      .catch(() => {});
+    load();
   }, [id, page]);
 
-  async function doAction(action: 'pause' | 'resume' | 'cancel') {
-    if (!id) return;
-    setActionLoading(true);
-    setError(null);
+  useEffect(() => {
+    if (campaign?.status === 'running') {
+      pollingRef.current = setInterval(load, 5000);
+    } else {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    }
+    return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
+  }, [campaign?.status]);
+
+  const doAction = async (action: string) => {
     try {
       const res = await fetch(`/api/v2/campaigns/${id}/${action}`, { method: 'POST' });
-      if (!res.ok) { setError('Erro ao executar ação'); return; }
-      // Refresh campaign
-      const updated = await fetch(`/api/v2/campaigns/${id}`).then(r => r.json());
-      setCampaign(updated);
-    } catch {
-      setError('Erro de conexão');
-    } finally {
-      setActionLoading(false);
+      if (!res.ok) { const e = await res.json() as any; alert(e.error ?? 'Erro'); return; }
+      load();
+    } catch (e: any) {
+      alert(e.message);
     }
-  }
+  };
 
-  if (loading) return <div className="p-6 text-sm text-gray-400">Carregando...</div>;
-  if (!campaign) return <div className="p-6 text-sm text-red-500">Campanha não encontrada.</div>;
+  if (loading) return <div className="p-6 text-sm text-text-secondary">Carregando...</div>;
+  if (!campaign) return <div className="p-6 text-sm text-red-600">Campanha não encontrada.</div>;
+
+  // Client-side filtering since the API doesn't support ?status= on contacts
+  const filteredContacts = filterStatus
+    ? contacts.filter(c => c.status === filterStatus)
+    : contacts;
 
   return (
-    <div className="p-6">
+    <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <button onClick={() => navigate('/painel/campanhas')} className="text-gray-400 hover:text-gray-600">
-          ← Voltar
+      <div className="flex items-center gap-3 flex-wrap">
+        <button onClick={() => navigate('/painel/campanhas')} className="text-text-tertiary hover:text-text-primary">
+          <ArrowLeft className="h-5 w-5" />
         </button>
-        <div className="flex-1">
-          <h1 className="text-xl font-semibold text-gray-900">{campaign.name}</h1>
-          <div className="text-sm text-gray-400">{campaign.template_name} · {campaign.template_language}</div>
-        </div>
-        <StatusBadge status={campaign.status} />
-      </div>
-
-      {/* Metrics */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="text-xs text-gray-500 mb-1">Total</div>
-          <div className="text-2xl font-semibold text-gray-900">{campaign.total_contacts}</div>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="text-xs text-gray-500 mb-1">Enviados</div>
-          <div className="text-2xl font-semibold text-green-600">{campaign.sent_count}</div>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="text-xs text-gray-500 mb-1">Falhas</div>
-          <div className="text-2xl font-semibold text-red-500">{campaign.failed_count}</div>
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="flex gap-2 mb-6">
+        <h1 className="text-xl font-semibold text-text-primary flex-1 min-w-0 truncate">{campaign.name}</h1>
+        <Badge variant={statusVariant[campaign.status] ?? 'default'}>
+          {statusLabel[campaign.status] ?? campaign.status}
+        </Badge>
         {campaign.status === 'running' && (
-          <button
-            onClick={() => doAction('pause')}
-            disabled={actionLoading}
-            className="px-4 py-2 bg-yellow-500 text-white rounded-lg text-sm disabled:opacity-50"
-          >
-            Pausar
-          </button>
+          <Button variant="secondary" size="sm" onClick={() => doAction('pause')}>Pausar</Button>
         )}
         {campaign.status === 'paused' && (
-          <button
-            onClick={() => doAction('resume')}
-            disabled={actionLoading}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm disabled:opacity-50"
-          >
-            Retomar
-          </button>
+          <Button size="sm" onClick={() => doAction('resume')}>Retomar</Button>
         )}
-        {(campaign.status === 'running' || campaign.status === 'paused') && (
-          <button
-            onClick={() => { if (confirm('Cancelar campanha?')) doAction('cancel'); }}
-            disabled={actionLoading}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm disabled:opacity-50"
-          >
-            Cancelar
-          </button>
+        {['running', 'paused', 'pending'].includes(campaign.status) && (
+          <Button variant="danger" size="sm" onClick={() => doAction('cancel')}>Cancelar</Button>
         )}
       </div>
 
-      {error && <div className="mb-4 text-red-500 text-sm">{error}</div>}
+      {/* Metric cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: 'Total', value: campaign.total_contacts, icon: Users, color: 'text-text-secondary' },
+          { label: 'Enviado', value: campaign.sent_count, icon: Send, color: 'text-primary' },
+          { label: 'Falhas', value: campaign.failed_count, icon: CheckCircle2, color: 'text-red-600' },
+          { label: 'Progresso', value: `${campaign.total_contacts > 0 ? Math.round((campaign.sent_count / campaign.total_contacts) * 100) : 0}%`, icon: BookOpen, color: 'text-blue-600' },
+        ].map(({ label, value, icon: Icon, color }) => (
+          <Card key={label}>
+            <div className="flex items-center gap-3">
+              <Icon className={`h-5 w-5 shrink-0 ${color}`} />
+              <div>
+                <p className="text-2xl font-bold text-text-primary">{value}</p>
+                <p className="text-xs text-text-secondary">{label}</p>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
 
-      {/* Contacts Table */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-200 font-medium text-sm text-gray-700">Contatos</div>
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Telefone</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Enviado em</th>
-              <th className="px-4 py-3 text-left font-medium text-gray-600">Erro</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {contacts.map(c => (
-              <tr key={c.id}>
-                <td className="px-4 py-3 text-gray-900">{c.phone}</td>
-                <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
-                <td className="px-4 py-3 text-gray-400">
-                  {c.sent_at ? new Date(c.sent_at).toLocaleString('pt-BR') : '—'}
-                </td>
-                <td className="px-4 py-3 text-red-500 text-xs">{c.error_message ?? ''}</td>
+      {/* Tabela de contatos */}
+      <Card padding="lg">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-text-primary">Contatos</h2>
+          <Select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="w-40">
+            <option value="">Todos</option>
+            <option value="pending">Pendente</option>
+            <option value="sent">Enviado</option>
+            <option value="delivered">Entregue</option>
+            <option value="read">Lido</option>
+            <option value="failed">Falhou</option>
+            <option value="cancelled">Cancelado</option>
+          </Select>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-xs text-text-secondary">
+                <th className="text-left py-2 pr-4 font-medium">Telefone</th>
+                <th className="text-left py-2 pr-4 font-medium">Status</th>
+                <th className="text-left py-2 pr-4 font-medium">Enviado em</th>
+                <th className="text-left py-2 font-medium">Erro</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filteredContacts.map(c => (
+                <tr key={c.id} className="border-b border-border last:border-0">
+                  <td className="py-2 pr-4 text-text-primary font-mono text-xs">{c.phone}</td>
+                  <td className="py-2 pr-4">
+                    <Badge variant={contactStatusVariant[c.status] ?? 'default'}>{c.status}</Badge>
+                  </td>
+                  <td className="py-2 pr-4 text-text-tertiary text-xs">
+                    {c.sent_at ? new Date(c.sent_at).toLocaleString('pt-BR') : '—'}
+                  </td>
+                  <td className="py-2 text-red-600 text-xs">{c.error_message ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filteredContacts.length === 0 && (
+            <p className="text-sm text-text-secondary py-4 text-center">Nenhum contato encontrado.</p>
+          )}
+        </div>
 
         {/* Pagination */}
-        <div className="px-4 py-3 border-t border-gray-200 flex gap-2">
+        <div className="mt-4 pt-3 border-t border-border flex items-center gap-2">
           <button
             onClick={() => setPage(p => Math.max(1, p - 1))}
             disabled={page === 1}
-            className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-40"
+            className="px-3 py-1 border border-border rounded text-sm disabled:opacity-40 text-text-secondary hover:text-text-primary"
           >
             Anterior
           </button>
-          <span className="px-3 py-1 text-sm text-gray-500">Página {page}</span>
+          <span className="px-3 py-1 text-sm text-text-tertiary">Página {page}</span>
           <button
             onClick={() => setPage(p => p + 1)}
             disabled={contacts.length < 50}
-            className="px-3 py-1 border border-gray-300 rounded text-sm disabled:opacity-40"
+            className="px-3 py-1 border border-border rounded text-sm disabled:opacity-40 text-text-secondary hover:text-text-primary"
           >
             Próxima
           </button>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }
