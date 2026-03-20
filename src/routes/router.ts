@@ -11,6 +11,7 @@ import { AdminController, isAuthenticated } from '../controllers/admin.controlle
 import { SignupController } from '../controllers/signup.controller';
 import { env } from '../config/env';
 import { conversationsRoutes } from '../modules/conversations/conversations.routes';
+import { mediaRoutes } from '../modules/conversations/media.routes';
 import { templatesRoutes } from '../modules/templates/templates.routes';
 import { campaignsRoutes } from '../modules/campaigns/campaigns.routes';
 import { accountsRoutes } from '../modules/accounts/accounts.routes';
@@ -189,6 +190,9 @@ export const appRouter = async (req: Request): Promise<Response> => {
 
     const accountsResult = await accountsRoutes(req, method, pathname);
     if (accountsResult) return accountsResult;
+
+    const mediaResult = await mediaRoutes(req, method, pathname, url);
+    if (mediaResult) return mediaResult;
 
     const conversationsResult = await conversationsRoutes(req, method, pathname);
     if (conversationsResult) return conversationsResult;
