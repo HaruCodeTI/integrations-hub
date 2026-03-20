@@ -4,7 +4,7 @@ import type { Client, CreateClientInput, UpdateClientInput } from '../../service
 
 export class AccountsService {
   static list(): Client[] {
-    return db.getAllClients().filter(c => c.active === 1);
+    return db.getAllClients();
   }
 
   static get(id: string): Client | null {

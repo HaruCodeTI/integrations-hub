@@ -1,5 +1,5 @@
 // src/frontend/pages/campaigns/CampaignDetail.tsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Send, CheckCircle2, BookOpen, Users } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
@@ -55,7 +55,7 @@ export default function CampaignDetail() {
   const [loading, setLoading] = useState(true);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const [cRes, ctRes] = await Promise.all([
         fetch(`/api/v2/campaigns/${id}`),
@@ -71,20 +71,17 @@ export default function CampaignDetail() {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    load();
   }, [id, page]);
 
   useEffect(() => {
-    if (campaign?.status === 'running') {
-      pollingRef.current = setInterval(load, 5000);
-    } else {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    }
-    return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
-  }, [campaign?.status]);
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    if (campaign?.status !== 'running') return;
+    const interval = setInterval(load, 5000);
+    return () => clearInterval(interval);
+  }, [campaign?.status, load]);
 
   const doAction = async (action: string) => {
     try {
