@@ -24,7 +24,8 @@ jobs:
             
             cd /var/www/wa-omni-gateway
             
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
             
             /root/.bun/bin/bun install
             
