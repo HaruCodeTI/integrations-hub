@@ -69,8 +69,22 @@ describe('processNextJob', () => {
     const contacts = inMemoryDb.listCampaignContacts(campaign.id, undefined, 1, 100);
     inMemoryDb.insertCampaignJobs(campaign.id, contacts.map(c => c.id));
 
+    const beforeMs = Date.now();
     const result = await processNextJob();
     expect(result).toBe(true);
+
+    // Verify the job was requeued: attempts incremented and next_attempt_at set ~60s ahead
+    const jobs = (inMemoryDb as any).db.query(
+      `SELECT * FROM campaign_jobs WHERE campaign_id = ? ORDER BY id DESC LIMIT 1`
+    ).get(campaign.id) as { attempts: number; next_attempt_at: string; status: string };
+
+    expect(jobs).toBeDefined();
+    expect(jobs.attempts).toBe(1);
+    expect(jobs.status).toBe('queued');
+
+    const nextAttemptMs = new Date(jobs.next_attempt_at + 'Z').getTime();
+    // next_attempt_at should be at least 55s in the future (60s delay, allow 5s tolerance)
+    expect(nextAttemptMs).toBeGreaterThan(beforeMs + 55_000);
   });
 });
 
