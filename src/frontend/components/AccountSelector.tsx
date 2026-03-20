@@ -9,7 +9,7 @@ export default function AccountSelector({ value, onChange, label }: Props) {
 
   useEffect(() => {
     fetch('/api/v2/accounts')
-      .then(r => { if (r.status === 401) { window.location.href = '/admin/login'; } return r.json(); })
+      .then(r => { if (r.status === 401) { window.location.href = '/admin/login'; return Promise.reject('unauthorized'); } return r.json(); })
       .then(data => { setAccounts(data); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
