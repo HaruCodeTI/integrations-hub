@@ -132,7 +132,8 @@ function Step1({ campaignName, setCampaignName, parsedData, setParsedData, fileR
 // Step 2: Canal + Template
 function Step2({ accounts, selectedPhone, setSelectedPhone, templates, loadingTemplates, selectedTemplate, setSelectedTemplate, varMapping, setVarMapping, parsedData, onBack, onNext }: any) {
   const bodyComponent = selectedTemplate?.components?.find((c: any) => c.type === 'BODY');
-  const variables = bodyComponent?.text?.match(/\{\{(\d+)\}\}/g) ?? [];
+  // Detecta variáveis {{1}}, {{nome}}, etc. — únicas, em ordem de aparição
+  const variables: string[] = [...new Set<string>(bodyComponent?.text?.match(/\{\{([a-zA-Z0-9_]+)\}\}/g) ?? [])];
 
   return (
     <div className="space-y-4">
@@ -222,10 +223,11 @@ function Step3({ campaignName, selectedPhone, accounts, selectedTemplate, parsed
   const account = accounts.find((a: Account) => a.phone_number_id === selectedPhone);
   const firstRow = parsedData?.preview?.[0] ?? {};
   const bodyText = selectedTemplate?.components?.find((c: any) => c.type === 'BODY')?.text ?? '';
-  const preview = bodyText.replace(/\{\{(\d+)\}\}/g, (_: string, n: string) => {
-    const idx = parseInt(n) - 1;
+  const allVars: string[] = [...new Set<string>(bodyText.match(/\{\{([a-zA-Z0-9_]+)\}\}/g) ?? [])];
+  const preview = bodyText.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (match: string) => {
+    const idx = allVars.indexOf(match);
     const col = varMapping[idx];
-    return col ? (firstRow[col] ?? `{{${n}}}`) : `{{${n}}}`;
+    return col ? (firstRow[col] ?? match) : match;
   });
 
   return (
