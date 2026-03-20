@@ -9,6 +9,7 @@ import { openApiSpec } from '../docs/openapi';
 import { mediaService } from '../services/media.service';
 import { AdminController, isAuthenticated } from '../controllers/admin.controller';
 import { SignupController } from '../controllers/signup.controller';
+import { PanelController } from '../controllers/panel.controller';
 import { env } from '../config/env';
 
 const htmlResponse = (html: string) =>
@@ -169,6 +170,32 @@ export const appRouter = async (req: Request): Promise<Response> => {
     }
 
     return new Response("Not Found", { status: 404 });
+  }
+
+  // Painel API v2 (session cookie) — DEVE ficar ANTES do /api/ para nao ser bloqueado por validateApiKey
+  if (pathname.startsWith('/api/v2/')) {
+    if (!isAuthenticated(req)) {
+      return new Response(JSON.stringify({ error: 'Nao autenticado' }), {
+        status: 401, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (method === 'GET' && pathname === '/api/v2/accounts') {
+      return PanelController.listAccounts();
+    }
+
+    // Placeholders — rotas de conversations, templates, campaigns adicionadas nos planos 2-4
+    return new Response(JSON.stringify({ error: 'Rota v2 nao encontrada' }), {
+      status: 404, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Painel SPA — redireciona se nao autenticado, senao serve o index.html
+  if (pathname === '/painel' || pathname.startsWith('/painel/')) {
+    if (!isAuthenticated(req)) {
+      return new Response(null, { status: 302, headers: { Location: '/admin/login' } });
+    }
+    return new Response(Bun.file('src/frontend/index.html'));
   }
 
   // ─── API Protegida (requer GATEWAY_API_KEY) ──────────────
