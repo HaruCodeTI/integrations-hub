@@ -56,8 +56,11 @@ export default function TemplateBuilderModal({ phoneNumberId, onClose, onSuccess
 
   const buildPreview = () => {
     let preview = body;
-    const matches = body.match(/\{\{(\d+)\}\}/g) ?? [];
-    matches.forEach((m, i) => { preview = preview.replace(m, `[variável ${i + 1}]`); });
+    const allMatches = body.match(/\{\{\d+\}\}/g) ?? [];
+    const unique = [...new Set(allMatches)];
+    unique.forEach((m, i) => {
+      preview = preview.split(m).join(`[variável ${i + 1}]`);
+    });
     return preview;
   };
 
@@ -75,7 +78,7 @@ export default function TemplateBuilderModal({ phoneNumberId, onClose, onSuccess
         buttons: buttons.map(b => {
           if (b.type === 'QUICK_REPLY') return { type: 'QUICK_REPLY', text: b.text };
           if (b.type === 'URL') return { type: 'URL', text: b.text, url: b.url };
-          return { type: 'COPY_CODE', example: [b.example ?? ''] };
+          return { type: 'COPY_CODE', example: b.example ?? [''] };
         }),
       });
     }

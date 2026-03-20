@@ -49,7 +49,10 @@ export default function TemplateList() {
     if (!selectedPhone) return;
     setLoading(true);
     fetch(`/api/v2/templates?phone_number_id=${selectedPhone}`)
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error('Erro ao carregar templates');
+        return r.json();
+      })
       .then(setTemplates)
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -59,8 +62,17 @@ export default function TemplateList() {
 
   const deleteTemplate = async (name: string) => {
     if (!confirm(`Excluir template "${name}"?`)) return;
-    await fetch(`/api/v2/templates/${name}?phone_number_id=${selectedPhone}`, { method: 'DELETE' });
-    loadTemplates();
+    try {
+      const res = await fetch(`/api/v2/templates/${name}?phone_number_id=${selectedPhone}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const d = await res.json() as any;
+        alert(d.error ?? 'Erro ao excluir template');
+        return;
+      }
+      loadTemplates();
+    } catch (e: any) {
+      alert(e.message);
+    }
   };
 
   return (
