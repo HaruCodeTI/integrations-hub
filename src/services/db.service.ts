@@ -147,6 +147,7 @@ export interface ConversationSummary {
   contact_phone: string;
   last_at: string;
   last_content: string;
+  last_direction: 'inbound' | 'outbound';
 }
 
 export interface SaveMessageInput {
@@ -475,7 +476,11 @@ export class DatabaseService {
         (SELECT content FROM messages m2
          WHERE m2.phone_number_id = m1.phone_number_id
            AND m2.contact_phone = m1.contact_phone
-         ORDER BY created_at DESC LIMIT 1) as last_content
+         ORDER BY created_at DESC LIMIT 1) as last_content,
+        (SELECT direction FROM messages m3
+         WHERE m3.phone_number_id = m1.phone_number_id
+           AND m3.contact_phone = m1.contact_phone
+         ORDER BY created_at DESC LIMIT 1) as last_direction
       FROM messages m1
       WHERE phone_number_id = ?
       GROUP BY contact_phone

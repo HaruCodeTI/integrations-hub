@@ -1,4 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Check, CheckCheck } from 'lucide-react';
+
+function MessageTick({ status }: { status: string }) {
+  if (status === 'read') return <CheckCheck className="inline h-3.5 w-3.5 text-blue-500 ml-1 shrink-0" />;
+  if (status === 'delivered') return <CheckCheck className="inline h-3.5 w-3.5 text-gray-400 ml-1 shrink-0" />;
+  return <Check className="inline h-3.5 w-3.5 text-gray-400 ml-1 shrink-0" />;
+}
 
 interface Message {
   id: string;
@@ -84,8 +91,9 @@ export default function ConversationView({ phoneId, contact }: Props) {
               msg.direction === 'outbound' ? 'bg-green-100 text-gray-800' : 'bg-white border border-gray-200 text-gray-800'
             }`}>
               <div>{getBody(msg.content)}</div>
-              <div className="text-xs text-gray-400 mt-1 text-right">
+              <div className="text-xs text-gray-400 mt-1 flex items-center justify-end gap-0.5">
                 {new Date(msg.created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                {msg.direction === 'outbound' && <MessageTick status={msg.status} />}
               </div>
             </div>
           </div>

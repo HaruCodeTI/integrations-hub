@@ -14,6 +14,7 @@ interface ConversationSummary {
   contact_phone: string;
   last_at: string;
   last_content: string;
+  last_direction: 'inbound' | 'outbound';
 }
 
 interface Conversation extends ConversationSummary {
@@ -21,7 +22,7 @@ interface Conversation extends ConversationSummary {
   account_name: string;
 }
 
-const TABS = ['Todas', 'IA', 'Minhas', 'Outras', 'Abertas'];
+const TABS = ['Todas', 'Lidas', 'Não lidas'];
 
 // Inner component that renders ConversationView using route params + grouped data
 function ConversationViewWrapper({ grouped }: { grouped: Record<string, Conversation[]> }) {
@@ -85,8 +86,15 @@ export default function ConversationList() {
       .catch(console.error);
   }, []);
 
+  // Filtrar por tab
+  const filtered = conversations.filter(c => {
+    if (activeTab === 'Lidas') return c.last_direction === 'outbound';
+    if (activeTab === 'Não lidas') return c.last_direction === 'inbound';
+    return true;
+  });
+
   // Agrupar por phone_number_id
-  const grouped = conversations.reduce<Record<string, Conversation[]>>((acc, c) => {
+  const grouped = filtered.reduce<Record<string, Conversation[]>>((acc, c) => {
     const key = c.phone_number_id;
     if (!acc[key]) acc[key] = [];
     acc[key].push(c);
